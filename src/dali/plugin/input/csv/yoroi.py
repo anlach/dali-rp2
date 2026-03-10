@@ -42,11 +42,12 @@ from rp2.rp2_decimal import ZERO, RP2Decimal
 from dali.abstract_input_plugin import AbstractInputPlugin
 from dali.abstract_transaction import AbstractTransaction
 from dali.configuration import Keyword
+from dali.in_transaction import InTransaction
 from dali.intra_transaction import IntraTransaction
 
 _SENT: str = "Withdrawal"
 _RECV: str = "Deposit"
-_DELEGATE: str = "DELEGATE"
+_DELEGATE: str = "Delegation"
 
 
 class InputPlugin(AbstractInputPlugin):
@@ -61,6 +62,7 @@ class InputPlugin(AbstractInputPlugin):
     __BUY_CURRENCY_INDEX: int = 2
     __SELL_AMOUNT_INDEX: int = 3
     __SELL_CURRENCY_INDEX: int = 4
+    __COMMENT_INDEX: int = 9
 
     __DELIMITER = ","
 
@@ -108,9 +110,9 @@ class InputPlugin(AbstractInputPlugin):
                     currency = line[self.__SELL_CURRENCY_INDEX]
                     amount_number = RP2Decimal(line[self.__SELL_AMOUNT_INDEX])
                 elif transaction_type == _DELEGATE:
-                    # DELEGATE - crypto being delegated for staking
-                    currency = line[self.__SELL_CURRENCY_INDEX]
-                    amount_number = RP2Decimal(line[self.__SELL_AMOUNT_INDEX])
+                    # Delegation - can be in either Buy Amount or Sell Amount depending on direction
+                    currency = line[self.__BUY_CURRENCY_INDEX] if line[self.__BUY_AMOUNT_INDEX] else line[self.__SELL_CURRENCY_INDEX]
+                    amount_number = RP2Decimal(line[self.__BUY_AMOUNT_INDEX]) if line[self.__BUY_AMOUNT_INDEX] else RP2Decimal(line[self.__SELL_AMOUNT_INDEX])
                 else:
                     self.__logger.error("Unsupported transaction type (skipping): %s. Please open an issue at %s", raw_data, self.ISSUES_URL)
                     continue
@@ -123,39 +125,29 @@ class InputPlugin(AbstractInputPlugin):
                 if amount_number == ZERO and fee_number > ZERO:
                     self.__logger.warning("Possible dusting attack (fee > 0, total = 0), skipping transaction: %s", raw_data)
                     continue
-                if transaction_type in {_RECV, _SENT, _DELEGATE}:
-                    # Determine from/to based on transaction type
-                    if transaction_type == _SENT:
-                        from_exchange = self.__account_nickname
-                        from_holder = self.account_holder
-                        to_exchange = Keyword.UNKNOWN.value
-                        to_holder = Keyword.UNKNOWN.value
-                        crypto_sent_value = str(amount_number + fee_number)
-                        crypto_received_value = Keyword.UNKNOWN.value
-                    elif transaction_type == _RECV:
-                        from_exchange = Keyword.UNKNOWN.value
-                        from_holder = Keyword.UNKNOWN.value
-                        to_exchange = self.__account_nickname
-                        to_holder = self.account_holder
-                        crypto_sent_value = Keyword.UNKNOWN.value
-                        crypto_received_value = str(amount_number)
-                    elif transaction_type == _DELEGATE:
-                        # DELEGATE - crypto delegated to staking pool (still user's funds)
-                        from_exchange = self.__account_nickname
-                        from_holder = self.account_holder
-                        to_exchange = self.__account_nickname
-                        to_holder = self.account_holder
-                        crypto_sent_value = str(amount_number + fee_number)
-                        crypto_received_value = str(amount_number)
-                    else:
-                        # This should never happen due to earlier check
-                        from_exchange = Keyword.UNKNOWN.value
-                        from_holder = Keyword.UNKNOWN.value
-                        to_exchange = Keyword.UNKNOWN.value
-                        to_holder = Keyword.UNKNOWN.value
-                        crypto_sent_value = Keyword.UNKNOWN.value
-                        crypto_received_value = Keyword.UNKNOWN.value
 
+                # Check for staking rewards (Deposit with "Staking Reward" in comment)
+                comment: str = line[self.__COMMENT_INDEX] if len(line) > self.__COMMENT_INDEX and line[self.__COMMENT_INDEX] else ""
+                is_staking_reward: bool = transaction_type == _RECV and "Staking Reward" in comment
+
+                if is_staking_reward:
+                    # Create InTransaction for staking rewards
+                    result.append(
+                        InTransaction(
+                            plugin=self.__YOROI,
+                            unique_id=crypto_hash,
+                            raw_data=raw_data,
+                            timestamp=f"{timestamp_value}",
+                            asset=currency,
+                            exchange=self.__account_nickname,
+                            holder=self.account_holder,
+                            transaction_type=Keyword.STAKING.value,
+                            spot_price=spot_price,
+                            crypto_in=str(amount_number),
+                            notes=comment,
+                        )
+                    )
+                elif transaction_type in {_RECV, _SENT, _DELEGATE}:
                     result.append(
                         IntraTransaction(
                             plugin=self.__YOROI,
@@ -163,13 +155,13 @@ class InputPlugin(AbstractInputPlugin):
                             raw_data=raw_data,
                             timestamp=f"{timestamp_value}",
                             asset=currency,
-                            from_exchange=from_exchange,
-                            from_holder=from_holder,
-                            to_exchange=to_exchange,
-                            to_holder=to_holder,
+                            from_exchange=self.__account_nickname if transaction_type in {_SENT, _DELEGATE} else Keyword.UNKNOWN.value,
+                            from_holder=self.account_holder if transaction_type in {_SENT, _DELEGATE} else Keyword.UNKNOWN.value,
+                            to_exchange=self.__account_nickname if transaction_type in {_RECV, _DELEGATE} else Keyword.UNKNOWN.value,
+                            to_holder=self.account_holder if transaction_type in {_RECV, _DELEGATE} else Keyword.UNKNOWN.value,
                             spot_price=spot_price,
-                            crypto_sent=crypto_sent_value,
-                            crypto_received=crypto_received_value,
+                            crypto_sent=str(amount_number + fee_number) if transaction_type in {_SENT, _DELEGATE} else Keyword.UNKNOWN.value,
+                            crypto_received=str(amount_number) if transaction_type in {_RECV, _DELEGATE} else Keyword.UNKNOWN.value,
                             notes=None,
                         )
                     )
