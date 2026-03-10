@@ -18,7 +18,6 @@ from rp2.rp2_decimal import ZERO, RP2Decimal
 from dali.configuration import Keyword
 from dali.in_transaction import InTransaction
 from dali.intra_transaction import IntraTransaction
-from dali.out_transaction import OutTransaction
 from dali.plugin.input.csv.strike import InputPlugin
 
 
@@ -37,11 +36,11 @@ class TestStrikeCsv:
 
         # Test data has:
         # - 2 Deposit (fiat only - skipped)
-        # - 2 Purchase (2 InTransaction + 2 OutTransaction = 4)
+        # - 2 Purchase (2 InTransaction)
         # - 2 Send (2 IntraTransaction)
         # - 1 Receive (1 IntraTransaction)
-        # Total: 7 transactions
-        assert len(result) == 7
+        # Total: 5 transactions
+        assert len(result) == 5
 
         # Verify we have the right types
         intra_count = sum(1 for t in result if isinstance(t, IntraTransaction))
@@ -49,9 +48,6 @@ class TestStrikeCsv:
 
         in_tx_count = sum(1 for t in result if isinstance(t, InTransaction))
         assert in_tx_count == 2  # 2 Purchase (BTC in)
-
-        out_tx_count = sum(1 for t in result if isinstance(t, OutTransaction))
-        assert out_tx_count == 2  # 2 Purchase (USD out)
 
         # Check a Receive transaction (IntraTransaction)
         receive_tx = next((t for t in result if isinstance(t, IntraTransaction) and t.crypto_received and "0.0035" in t.crypto_received), None)
@@ -64,11 +60,6 @@ class TestStrikeCsv:
         assert purchase_in is not None
         assert purchase_in.asset == "BTC"
         assert purchase_in.transaction_type == "Buy"
-
-        # Check a Purchase OutTransaction (USD spent)
-        purchase_out = next((t for t in result if isinstance(t, OutTransaction) and t.asset == "USD"), None)
-        assert purchase_out is not None
-        assert purchase_out.transaction_type == "Sell"
 
     def test_multiple_files(self) -> None:
         """Test loading multiple CSV files (comma-separated)."""
@@ -111,13 +102,6 @@ class TestStrikeCsv:
             assert tx.asset == "BTC"
             assert tx.transaction_type == "Buy"
 
-        # OutTransactions: Purchase (fiat paid)
-        out_txs = [t for t in result if isinstance(t, OutTransaction)]
-        assert len(out_txs) == 2
-        for tx in out_txs:
-            assert tx.asset == "USD"
-            assert tx.transaction_type == "Sell"
-
     def test_send_includes_fee(self) -> None:
         """Test that Send transactions include fees in the sent amount."""
         plugin = InputPlugin(
@@ -137,7 +121,7 @@ class TestStrikeCsv:
         assert RP2Decimal(send_tx.crypto_sent) == RP2Decimal("0.005")
 
     def test_purchase_transaction(self) -> None:
-        """Test Purchase transactions create InTransaction (crypto in) and OutTransaction (fiat out)."""
+        """Test Purchase transactions create InTransaction (crypto in)."""
         plugin = InputPlugin(
             account_holder="tester",
             account_nickname="strike_wallet",
@@ -151,10 +135,6 @@ class TestStrikeCsv:
         # Find purchase InTransaction (BTC in)
         purchase_in = [t for t in result if isinstance(t, InTransaction) and t.transaction_type == "Buy"]
         assert len(purchase_in) >= 2  # Two purchases in test data
-
-        # Find purchase OutTransaction (USD out)
-        purchase_out = [t for t in result if isinstance(t, OutTransaction) and t.transaction_type == "Sell"]
-        assert len(purchase_out) >= 2  # Two purchases in test data
 
         # Verify the first purchase has correct values
         first_purchase_in = purchase_in[0]

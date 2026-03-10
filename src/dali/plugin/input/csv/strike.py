@@ -238,29 +238,6 @@ class InputPlugin(AbstractInputPlugin):
                         )
                     )
 
-                    # Create OutTransaction for the fiat spent (USD)
-                    # USD amount is negative in the CSV, so we use absolute value
-                    fiat_out = abs(usd_amount)
-                    fiat_fee = fee_usd_amount
-
-                    result.append(
-                        OutTransaction(
-                            plugin=self.__STRIKE,
-                            unique_id=tx_unique_id or Keyword.UNKNOWN.value,
-                            raw_data=raw_data,
-                            timestamp=f"{timestamp_value}",
-                            asset="USD",
-                            exchange=self.__STRIKE,
-                            holder=self.account_holder,
-                            transaction_type=Keyword.SELL.value,
-                            spot_price=exchange_rate if exchange_rate else Keyword.UNKNOWN.value,
-                            crypto_out_no_fee=str(fiat_out),
-                            crypto_out_with_fee=str(fiat_out + fiat_fee),
-                            crypto_fee=str(fiat_fee) if fiat_fee > ZERO else None,
-                            notes=description if description else None,
-                        )
-                    )
-
                 elif transaction_type == self.__DEPOSIT:
                     # Deposit: fiat deposit (positive USD), no crypto involved
                     # This is a fiat-only transaction - we'll log it but skip for now
