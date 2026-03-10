@@ -124,6 +124,38 @@ class InputPlugin(AbstractInputPlugin):
                     self.__logger.warning("Possible dusting attack (fee > 0, total = 0), skipping transaction: %s", raw_data)
                     continue
                 if transaction_type in {_RECV, _SENT, _DELEGATE}:
+                    # Determine from/to based on transaction type
+                    if transaction_type == _SENT:
+                        from_exchange = self.__account_nickname
+                        from_holder = self.account_holder
+                        to_exchange = Keyword.UNKNOWN.value
+                        to_holder = Keyword.UNKNOWN.value
+                        crypto_sent_value = str(amount_number + fee_number)
+                        crypto_received_value = Keyword.UNKNOWN.value
+                    elif transaction_type == _RECV:
+                        from_exchange = Keyword.UNKNOWN.value
+                        from_holder = Keyword.UNKNOWN.value
+                        to_exchange = self.__account_nickname
+                        to_holder = self.account_holder
+                        crypto_sent_value = Keyword.UNKNOWN.value
+                        crypto_received_value = str(amount_number)
+                    elif transaction_type == _DELEGATE:
+                        # DELEGATE - crypto delegated to staking pool (still user's funds)
+                        from_exchange = self.__account_nickname
+                        from_holder = self.account_holder
+                        to_exchange = self.__account_nickname
+                        to_holder = self.account_holder
+                        crypto_sent_value = str(amount_number + fee_number)
+                        crypto_received_value = str(amount_number)
+                    else:
+                        # This should never happen due to earlier check
+                        from_exchange = Keyword.UNKNOWN.value
+                        from_holder = Keyword.UNKNOWN.value
+                        to_exchange = Keyword.UNKNOWN.value
+                        to_holder = Keyword.UNKNOWN.value
+                        crypto_sent_value = Keyword.UNKNOWN.value
+                        crypto_received_value = Keyword.UNKNOWN.value
+
                     result.append(
                         IntraTransaction(
                             plugin=self.__YOROI,
@@ -131,13 +163,13 @@ class InputPlugin(AbstractInputPlugin):
                             raw_data=raw_data,
                             timestamp=f"{timestamp_value}",
                             asset=currency,
-                            from_exchange=self.__account_nickname if transaction_type == _SENT else Keyword.UNKNOWN.value,
-                            from_holder=self.account_holder if transaction_type == _SENT else Keyword.UNKNOWN.value,
-                            to_exchange=self.__account_nickname if transaction_type == _RECV else Keyword.UNKNOWN.value,
-                            to_holder=self.account_holder if transaction_type == _RECV else Keyword.UNKNOWN.value,
+                            from_exchange=from_exchange,
+                            from_holder=from_holder,
+                            to_exchange=to_exchange,
+                            to_holder=to_holder,
                             spot_price=spot_price,
-                            crypto_sent=str(amount_number + fee_number) if transaction_type == _SENT else Keyword.UNKNOWN.value,
-                            crypto_received=str(amount_number) if transaction_type == _RECV else Keyword.UNKNOWN.value,
+                            crypto_sent=crypto_sent_value,
+                            crypto_received=crypto_received_value,
                             notes=None,
                         )
                     )
