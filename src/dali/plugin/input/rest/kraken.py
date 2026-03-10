@@ -65,6 +65,7 @@ _ROLLOVER: str = "rollover"
 _SALE: str = "sale"
 _SETTLED: str = "settled"
 _STAKING: str = "staking"
+_EARN: str = "earn"
 _TIMESTAMP: str = "time"
 _TRADE: str = "trade"
 _TRADES: str = "trades"
@@ -376,6 +377,51 @@ class InputPlugin(AbstractCcxtInputPlugin):
             elif record[_TYPE] == _SETTLED:
                 # ignorable in terms of in/out/intra
                 pass
+            elif record[_TYPE] == _EARN:
+                # Earn/ staking rewards - create InTransaction for rewards received
+                spot_price = Keyword.UNKNOWN.value
+                crypto_in = str(amount)
+
+                result.append(
+                    InTransaction(
+                        plugin=self.__PLUGIN_NAME,
+                        unique_id=Keyword.UNKNOWN.value,
+                        raw_data=raw_data,
+                        timestamp=timestamp_value,
+                        asset=asset_base,
+                        exchange=self.__EXCHANGE_NAME,
+                        holder=self.account_holder,
+                        transaction_type=Keyword.STAKING.value,
+                        spot_price=spot_price,
+                        crypto_in=crypto_in,
+                        crypto_fee=crypto_fee,
+                        fiat_fee=fiat_fee,
+                        notes=ledger_id,
+                    )
+                )
+            elif record[_TYPE] == _STAKING:
+                # Legacy staking rewards (deprecated March 2024, but may exist in older data)
+                # Handle similarly to Earn
+                spot_price = Keyword.UNKNOWN.value
+                crypto_in = str(amount)
+
+                result.append(
+                    InTransaction(
+                        plugin=self.__PLUGIN_NAME,
+                        unique_id=Keyword.UNKNOWN.value,
+                        raw_data=raw_data,
+                        timestamp=timestamp_value,
+                        asset=asset_base,
+                        exchange=self.__EXCHANGE_NAME,
+                        holder=self.account_holder,
+                        transaction_type=Keyword.STAKING.value,
+                        spot_price=spot_price,
+                        crypto_in=crypto_in,
+                        crypto_fee=crypto_fee,
+                        fiat_fee=fiat_fee,
+                        notes=ledger_id,
+                    )
+                )
             else:
                 self.__logger.error(f"Unsupported transaction type: {record[_TYPE]} (skipping): %s. Please open an issue at %s", raw_data, self.ISSUES_URL)
                 unhandled_types.update({record[_TYPE]: ledger_id})
