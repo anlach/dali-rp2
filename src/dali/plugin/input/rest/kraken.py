@@ -80,6 +80,11 @@ _KRAKEN_FIAT_SET: Set[str] = {"AUD", "CAD", "EUR", "GBP", "JPY", "USD", "ZAUD", 
 
 _KRAKEN_FIAT_LIST = list(set(list(_KRAKEN_FIAT_SET) + list(_FIAT_SET)))
 
+# Kraken yield-bearing asset suffixes
+# .B = balances in new yield-bearing products
+# .F = balances earning automatically in Kraken Rewards (formerly .S staking)
+# See: https://docs.kraken.com/rest/
+
 
 class InputPlugin(AbstractCcxtInputPlugin):
     __EXCHANGE_NAME: str = "kraken"
@@ -160,6 +165,16 @@ class InputPlugin(AbstractCcxtInputPlugin):
             raise RP2RuntimeError("Exchange is not instance of class kraken.")
         return super_client
 
+    def _get_base_from_asset(self, asset: str) -> str:
+        # Handle Kraken yield-bearing assets (.B, .F suffixes)
+        # These are read-only assets - to interact with them, use the base asset
+        # e.g., USDT.B -> USDT, SUI.F -> SUI
+        if asset.endswith(".B") or asset.endswith(".F"):
+            base_asset = asset[:-2]
+            self.__logger.debug("Stripping yield-bearing suffix from asset %s -> %s", asset, base_asset)
+            return self.base_id_to_base.get(base_asset, base_asset)
+        return self.base_id_to_base.get(asset, asset)
+
     def _get_process_deposits_pagination_detail_set(self) -> Optional[AbstractPaginationDetailSet]:
         pass
 
@@ -224,7 +239,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
             is_fiat_asset: bool = record[_ASSET] in _KRAKEN_FIAT_LIST
 
             amount: RP2Decimal = RP2Decimal(abs(RP2Decimal(record[_AMOUNT])))
-            asset_base: str = self.base_id_to_base[record[_ASSET]]
+            asset_base: str = self._get_base_from_asset(record[_ASSET])
             raw_data = str(record)
 
             if record[_TYPE] in {_WITHDRAWAL, _DEPOSIT}:
