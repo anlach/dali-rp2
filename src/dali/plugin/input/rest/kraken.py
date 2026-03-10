@@ -403,23 +403,23 @@ class InputPlugin(AbstractCcxtInputPlugin):
                     )
                 )
             elif record[_TYPE] == _RECEIVE:
-                # Crypto received - IntraTransaction (crypto coming in)
+                # Crypto received - InTransaction (crypto being received, like a purchase)
                 spot_price = Keyword.UNKNOWN.value
 
                 result.append(
-                    IntraTransaction(
+                    InTransaction(
                         plugin=self.__PLUGIN_NAME,
                         unique_id=Keyword.UNKNOWN.value,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
-                        from_exchange=Keyword.UNKNOWN.value,
-                        from_holder=Keyword.UNKNOWN.value,
-                        to_exchange=self.__EXCHANGE_NAME,
-                        to_holder=self.account_holder,
+                        exchange=self.__EXCHANGE_NAME,
+                        holder=self.account_holder,
+                        transaction_type=Keyword.BUY.value,
                         spot_price=spot_price,
-                        crypto_sent=Keyword.UNKNOWN.value,
-                        crypto_received=str(amount),
+                        crypto_in=str(amount),
+                        crypto_fee=crypto_fee,
+                        fiat_fee=fiat_fee,
                         notes=ledger_id,
                     )
                 )
@@ -445,16 +445,12 @@ class InputPlugin(AbstractCcxtInputPlugin):
                     )
                 )
             elif record[_TYPE] == _CONVERSION:
-                # Asset conversion - treated as OutTransaction + InTransaction pair
-                # For simplicity, record as OutTransaction first (spending the source asset)
+                # Asset conversion - e.g., fiat to stablecoin (USD to USDC)
+                # This is acquiring the new asset, so InTransaction
                 spot_price = Keyword.UNKNOWN.value
-                crypto_out_no_fee = str(amount)
-                crypto_out_with_fee = str(amount + RP2Decimal(record[_FEE]))
-                crypto_fee_value = record[_FEE] if not is_fiat_asset else "0"
-                fiat_fee_value = record[_FEE] if is_fiat_asset else None
 
                 result.append(
-                    OutTransaction(
+                    InTransaction(
                         plugin=self.__PLUGIN_NAME,
                         unique_id=Keyword.UNKNOWN.value,
                         raw_data=raw_data,
@@ -462,13 +458,10 @@ class InputPlugin(AbstractCcxtInputPlugin):
                         asset=asset_base,
                         exchange=self.__EXCHANGE_NAME,
                         holder=self.account_holder,
-                        transaction_type=Keyword.SELL.value,
+                        transaction_type=Keyword.BUY.value,
                         spot_price=spot_price,
-                        crypto_out_no_fee=crypto_out_no_fee,
-                        crypto_fee=crypto_fee_value,
-                        crypto_out_with_fee=crypto_out_with_fee,
-                        fiat_out_no_fee=Keyword.UNKNOWN.value,
-                        fiat_fee=fiat_fee_value,
+                        crypto_in=str(amount),
+                        crypto_fee=crypto_fee,
                         notes=ledger_id,
                     )
                 )
