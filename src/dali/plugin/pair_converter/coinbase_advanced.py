@@ -103,5 +103,12 @@ class PairConverterPlugin(AbstractPairConverterPlugin):
                 return result
             except ValueError:
                 retry_count += 1
+            except Exception as e:
+                error_str = str(e)
+                if "INVALID_ARGUMENT" in error_str or "ProductID is invalid" in error_str:
+                    LOGGER.debug("Skipping invalid product pair: %s-%s", from_asset, to_asset)
+                    return None
+                # Re-raise other exceptions
+                raise
 
         return result

@@ -46,6 +46,7 @@ from dali.intra_transaction import IntraTransaction
 
 _SENT: str = "Withdrawal"
 _RECV: str = "Deposit"
+_DELEGATE: str = "DELEGATE"
 
 
 class InputPlugin(AbstractInputPlugin):
@@ -106,6 +107,10 @@ class InputPlugin(AbstractInputPlugin):
                 elif transaction_type == _SENT:
                     currency = line[self.__SELL_CURRENCY_INDEX]
                     amount_number = RP2Decimal(line[self.__SELL_AMOUNT_INDEX])
+                elif transaction_type == _DELEGATE:
+                    # DELEGATE - crypto being delegated for staking
+                    currency = line[self.__SELL_CURRENCY_INDEX]
+                    amount_number = RP2Decimal(line[self.__SELL_AMOUNT_INDEX])
                 else:
                     self.__logger.error("Unsupported transaction type (skipping): %s. Please open an issue at %s", raw_data, self.ISSUES_URL)
                     continue
@@ -118,7 +123,7 @@ class InputPlugin(AbstractInputPlugin):
                 if amount_number == ZERO and fee_number > ZERO:
                     self.__logger.warning("Possible dusting attack (fee > 0, total = 0), skipping transaction: %s", raw_data)
                     continue
-                if transaction_type in {_RECV, _SENT}:
+                if transaction_type in {_RECV, _SENT, _DELEGATE}:
                     result.append(
                         IntraTransaction(
                             plugin=self.__YOROI,

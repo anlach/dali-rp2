@@ -67,6 +67,10 @@ _SETTLED: str = "settled"
 _STAKING: str = "staking"
 _TIMESTAMP: str = "time"
 _TRADE: str = "trade"
+_CONVERSION: str = "conversion"
+_RECEIVE: str = "receive"
+_SPEND: str = "spend"
+_REWARD: str = "reward"
 _TRADES: str = "trades"
 _TRANSFER: str = "transfer"
 _TYPE: str = "type"
@@ -376,6 +380,98 @@ class InputPlugin(AbstractCcxtInputPlugin):
             elif record[_TYPE] == _SETTLED:
                 # ignorable in terms of in/out/intra
                 pass
+            elif record[_TYPE] == _REWARD:
+                # Staking/rewards - similar to earn
+                spot_price = Keyword.UNKNOWN.value
+                crypto_in = str(amount)
+
+                result.append(
+                    InTransaction(
+                        plugin=self.__PLUGIN_NAME,
+                        unique_id=Keyword.UNKNOWN.value,
+                        raw_data=raw_data,
+                        timestamp=timestamp_value,
+                        asset=asset_base,
+                        exchange=self.__EXCHANGE_NAME,
+                        holder=self.account_holder,
+                        transaction_type=Keyword.STAKING.value,
+                        spot_price=spot_price,
+                        crypto_in=crypto_in,
+                        crypto_fee=crypto_fee,
+                        fiat_fee=fiat_fee,
+                        notes=ledger_id,
+                    )
+                )
+            elif record[_TYPE] == _RECEIVE:
+                # Crypto received - IntraTransaction (crypto coming in)
+                spot_price = Keyword.UNKNOWN.value
+
+                result.append(
+                    IntraTransaction(
+                        plugin=self.__PLUGIN_NAME,
+                        unique_id=Keyword.UNKNOWN.value,
+                        raw_data=raw_data,
+                        timestamp=timestamp_value,
+                        asset=asset_base,
+                        from_exchange=Keyword.UNKNOWN.value,
+                        from_holder=Keyword.UNKNOWN.value,
+                        to_exchange=self.__EXCHANGE_NAME,
+                        to_holder=self.account_holder,
+                        spot_price=spot_price,
+                        crypto_sent=Keyword.UNKNOWN.value,
+                        crypto_received=str(amount),
+                        notes=ledger_id,
+                    )
+                )
+            elif record[_TYPE] == _SPEND:
+                # Crypto spent - IntraTransaction (crypto going out)
+                spot_price = Keyword.UNKNOWN.value
+
+                result.append(
+                    IntraTransaction(
+                        plugin=self.__PLUGIN_NAME,
+                        unique_id=Keyword.UNKNOWN.value,
+                        raw_data=raw_data,
+                        timestamp=timestamp_value,
+                        asset=asset_base,
+                        from_exchange=self.__EXCHANGE_NAME,
+                        from_holder=self.account_holder,
+                        to_exchange=Keyword.UNKNOWN.value,
+                        to_holder=Keyword.UNKNOWN.value,
+                        spot_price=spot_price,
+                        crypto_sent=str(amount),
+                        crypto_received=Keyword.UNKNOWN.value,
+                        notes=ledger_id,
+                    )
+                )
+            elif record[_TYPE] == _CONVERSION:
+                # Asset conversion - treated as OutTransaction + InTransaction pair
+                # For simplicity, record as OutTransaction first (spending the source asset)
+                spot_price = Keyword.UNKNOWN.value
+                crypto_out_no_fee = str(amount)
+                crypto_out_with_fee = str(amount + RP2Decimal(record[_FEE]))
+                crypto_fee_value = record[_FEE] if not is_fiat_asset else "0"
+                fiat_fee_value = record[_FEE] if is_fiat_asset else None
+
+                result.append(
+                    OutTransaction(
+                        plugin=self.__PLUGIN_NAME,
+                        unique_id=Keyword.UNKNOWN.value,
+                        raw_data=raw_data,
+                        timestamp=timestamp_value,
+                        asset=asset_base,
+                        exchange=self.__EXCHANGE_NAME,
+                        holder=self.account_holder,
+                        transaction_type=Keyword.SELL.value,
+                        spot_price=spot_price,
+                        crypto_out_no_fee=crypto_out_no_fee,
+                        crypto_fee=crypto_fee_value,
+                        crypto_out_with_fee=crypto_out_with_fee,
+                        fiat_out_no_fee=Keyword.UNKNOWN.value,
+                        fiat_fee=fiat_fee_value,
+                        notes=ledger_id,
+                    )
+                )
             else:
                 self.__logger.error(f"Unsupported transaction type: {record[_TYPE]} (skipping): %s. Please open an issue at %s", raw_data, self.ISSUES_URL)
                 unhandled_types.update({record[_TYPE]: ledger_id})
