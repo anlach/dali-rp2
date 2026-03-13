@@ -90,6 +90,23 @@ _KRAKEN_FIAT_LIST = list(set(list(_KRAKEN_FIAT_SET) + list(_FIAT_SET)))
 # See: https://docs.kraken.com/rest/
 
 
+def _is_yield_or_historical_asset(asset: str) -> bool:
+    """Check if an asset has a yield-bearing or historical suffix.
+
+    These suffixes indicate read-only assets where the base asset should be used:
+    - .B = balances in new yield-bearing products
+    - .F = balances earning automatically in Kraken Rewards
+    - .HOLD / .HO = historical/old asset format
+
+    Args:
+        asset: The asset symbol to check.
+
+    Returns:
+        True if the asset has a yield-bearing or historical suffix, False otherwise.
+    """
+    return asset.endswith(".B") or asset.endswith(".F") or asset.endswith(".HOLD") or asset.endswith(".HO")
+
+
 class InputPlugin(AbstractCcxtInputPlugin):
     __EXCHANGE_NAME: str = "kraken"
     __PLUGIN_NAME: str = "kraken_REST"
@@ -193,7 +210,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
         # e.g., USDT.B -> USDT, SUI.F -> SUI
         # .HO = historical/old asset format (e.g., USD.HO -> USD)
         # See: https://support.kraken.com/hc/en-us/articles/360001185506-How-to-interpret-asset-codes
-        if asset.endswith(".B") or asset.endswith(".F") or asset.endswith(".HOLD") or asset.endswith(".HO"):
+        if _is_yield_or_historical_asset(asset):
             base_asset = asset[:-2]
             self.__logger.debug("Stripping yield-bearing/historical suffix from asset %s -> %s", asset, base_asset)
             return self.base_id_to_base.get(base_asset, base_asset)
@@ -303,7 +320,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
 
             timestamp_value: str = self._rp2_timestamp_from_seconds_epoch(record[_TIMESTAMP])
 
-            is_fiat_asset: bool = record[_ASSET] in _KRAKEN_FIAT_LIST or record[_ASSET].endswith('.B') or record[_ASSET].endswith('.F') or record[_ASSET].endswith('.HOLD') or record[_ASSET].endswith('.HO')
+            is_fiat_asset: bool = record[_ASSET] in _KRAKEN_FIAT_LIST or _is_yield_or_historical_asset(record[_ASSET])
 
             amount: RP2Decimal = RP2Decimal(abs(RP2Decimal(record[_AMOUNT])))
             asset_base: str = self._get_base_from_asset(record[_ASSET])
