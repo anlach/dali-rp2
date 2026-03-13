@@ -96,7 +96,7 @@ def _is_yield_or_historical_asset(asset: str) -> bool:
     These suffixes indicate read-only assets where the base asset should be used:
     - .B = balances in new yield-bearing products
     - .F = balances earning automatically in Kraken Rewards
-    - .HOLD / .HO = historical/old asset format
+    - .HOLD = historical/old asset format
 
     Args:
         asset: The asset symbol to check.
@@ -104,7 +104,7 @@ def _is_yield_or_historical_asset(asset: str) -> bool:
     Returns:
         True if the asset has a yield-bearing or historical suffix, False otherwise.
     """
-    return asset.endswith(".B") or asset.endswith(".F") or asset.endswith(".HOLD") or asset.endswith(".HO")
+    return asset.endswith(".B") or asset.endswith(".F") or asset.endswith(".HOLD")
 
 
 class InputPlugin(AbstractCcxtInputPlugin):
@@ -205,14 +205,18 @@ class InputPlugin(AbstractCcxtInputPlugin):
         return self.__end_date
 
     def _get_base_from_asset(self, asset: str) -> str:
-        # Handle Kraken yield-bearing assets (.B, .F suffixes)
+        # Handle Kraken yield-bearing assets (.B, .F, .HOLD suffixes)
         # These are read-only assets - to interact with them, use the base asset
-        # e.g., USDT.B -> USDT, SUI.F -> SUI
-        # .HO = historical/old asset format (e.g., USD.HO -> USD)
+        # e.g., USDT.B -> USDT, SUI.F -> SUI, USD.HOLD -> USD
+        # .HOLD is a historical/old asset format (5 chars)
         # See: https://support.kraken.com/hc/en-us/articles/360001185506-How-to-interpret-asset-codes
-        if _is_yield_or_historical_asset(asset):
+        if asset.endswith(".HOLD"):
+            base_asset = asset[:-5]
+            self.__logger.debug("Stripping historical suffix from asset %s -> %s", asset, base_asset)
+            return self.base_id_to_base.get(base_asset, base_asset)
+        if asset.endswith(".B") or asset.endswith(".F"):
             base_asset = asset[:-2]
-            self.__logger.debug("Stripping yield-bearing/historical suffix from asset %s -> %s", asset, base_asset)
+            self.__logger.debug("Stripping yield-bearing suffix from asset %s -> %s", asset, base_asset)
             return self.base_id_to_base.get(base_asset, base_asset)
         # Handle Kraken staking assets with numeric days suffix (.S, .M)
         # Examples: SOL03.S -> SOL, DOT28.S -> DOT, ATOM21.S -> ATOM
@@ -320,10 +324,11 @@ class InputPlugin(AbstractCcxtInputPlugin):
 
             timestamp_value: str = self._rp2_timestamp_from_seconds_epoch(record[_TIMESTAMP])
 
-            is_fiat_asset: bool = record[_ASSET] in _KRAKEN_FIAT_LIST or _is_yield_or_historical_asset(record[_ASSET])
+            asset_base: str = self._get_base_from_asset(record[_ASSET])
+            # Check if base asset is fiat (strip suffixes like .B which indicate yield-bearing crypto)
+            is_fiat_asset: bool = asset_base in _KRAKEN_FIAT_LIST
 
             amount: RP2Decimal = RP2Decimal(abs(RP2Decimal(record[_AMOUNT])))
-            asset_base: str = self._get_base_from_asset(record[_ASSET])
             raw_data = str(record)
 
             if record[_TYPE] in {_WITHDRAWAL, _DEPOSIT}:
