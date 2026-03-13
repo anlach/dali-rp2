@@ -303,7 +303,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
 
             timestamp_value: str = self._rp2_timestamp_from_seconds_epoch(record[_TIMESTAMP])
 
-            is_fiat_asset: bool = record[_ASSET] in _KRAKEN_FIAT_LIST or record[_ASSET].endswith('.F') or record[_ASSET].endswith('.HOLD') or record[_ASSET].endswith('.HO')
+            is_fiat_asset: bool = record[_ASSET] in _KRAKEN_FIAT_LIST or record[_ASSET].endswith('.B') or record[_ASSET].endswith('.F') or record[_ASSET].endswith('.HOLD') or record[_ASSET].endswith('.HO')
 
             amount: RP2Decimal = RP2Decimal(abs(RP2Decimal(record[_AMOUNT])))
             asset_base: str = self._get_base_from_asset(record[_ASSET])
