@@ -30,9 +30,10 @@ from gzip import open as gopen
 from json import JSONDecodeError
 from multiprocessing.pool import ThreadPool
 from os import makedirs, path, remove
-from typing import Dict, Generator, List, NamedTuple, Optional, Set, Tuple, cast
+from typing import Any, Dict, Generator, List, NamedTuple, Optional, Set, Tuple, cast
 from zipfile import BadZipFile, ZipFile, is_zipfile
 
+import ccxt
 import requests
 from progressbar import ProgressBar, UnknownLength
 from progressbar.widgets import AdaptiveTransferSpeed, BouncingBar, DataSize
@@ -532,6 +533,13 @@ class Kraken:
         if self._unzip_and_chunk(base_asset, quote_asset, all_bars, epoch_timestamp):
             return self._retrieve_cached_bars(base_asset, quote_asset, epoch_timestamp, all_bars, timespan)
 
+        # CSV data not available - try CCXT live API as fallback
+        if self.__use_quarterly_zip:
+            self.__logger.info("CSV data not available for %s%s, falling back to CCXT live API", base_asset, quote_asset)
+            ccxt_bar = self._fetch_price_via_ccxt(base_asset, quote_asset, timestamp)
+            if ccxt_bar:
+                return [ccxt_bar]
+
         return None
 
     def _unzip_and_chunk(self, base_asset: str, quote_asset: str, all_bars: bool = False, timestamp: Optional[int] = None) -> bool:
@@ -710,3 +718,74 @@ class Kraken:
         if days_ahead == 0:
             days_ahead = DAYS_IN_WEEK
         return date + timedelta(days=days_ahead)
+
+    def _fetch_price_via_ccxt(self, base_asset: str, quote_asset: str, timestamp: datetime) -> Optional[HistoricalBar]:
+        """Fetch price via CCXT live API when CSV data is not available.
+
+        Args:
+            base_asset: The base asset (e.g., 'XBT' for BTC)
+            quote_asset: The quote asset (e.g., 'USD')
+            timestamp: The timestamp to fetch the price for
+
+        Returns:
+            HistoricalBar with the price, or None if fetch fails
+        """
+        # Kraken uses XBT instead of BTC
+        if base_asset == "BTC":
+            base_asset = "XBT"
+
+        symbol = f"{base_asset}/{quote_asset}"
+
+        try:
+            self.__logger.info("Fetching price for %s via CCXT live API", symbol)
+            exchange = ccxt.kraken({"enableRateLimit": True})
+
+            # Fetch OHLCV data
+            # Convert timestamp to milliseconds for CCXT
+            since = int(timestamp.timestamp() * 1000)
+
+            # Fetch a small number of recent candles to get the one containing our timestamp
+            ohlcv = exchange.fetch_ohlcv(
+                symbol,
+                timeframe="1m",
+                since=since,
+                limit=10,
+            )
+
+            if not ohlcv:
+                self.__logger.warning("No OHLCV data returned from CCXT for %s", symbol)
+                return None
+
+            # Find the candle containing our timestamp
+            for candle in ohlcv:
+                candle_timestamp_ms = candle[0]
+                candle_timestamp = datetime.fromtimestamp(candle_timestamp_ms / 1000, timezone.utc)
+
+                # Use the closest candle to our timestamp
+                if abs((candle_timestamp - timestamp).total_seconds()) < 60:
+                    return HistoricalBar(
+                        duration=timedelta(minutes=1),
+                        timestamp=candle_timestamp,
+                        open=RP2Decimal(str(candle[1])),
+                        high=RP2Decimal(str(candle[2])),
+                        low=RP2Decimal(str(candle[3])),
+                        close=RP2Decimal(str(candle[4])),
+                        volume=RP2Decimal(str(candle[5])),
+                    )
+
+            # If no exact match, use the first candle
+            candle = ohlcv[0]
+            candle_timestamp = datetime.fromtimestamp(candle[0] / 1000, timezone.utc)
+            return HistoricalBar(
+                duration=timedelta(minutes=1),
+                timestamp=candle_timestamp,
+                open=RP2Decimal(str(candle[1])),
+                high=RP2Decimal(str(candle[2])),
+                low=RP2Decimal(str(candle[3])),
+                close=RP2Decimal(str(candle[4])),
+                volume=RP2Decimal(str(candle[5])),
+            )
+
+        except Exception as e:
+            self.__logger.error("Failed to fetch price via CCXT for %s: %s", symbol, str(e))
+            return None
