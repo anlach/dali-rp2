@@ -84,30 +84,9 @@ _KRAKEN_FIAT_SET: Set[str] = {"AUD", "CAD", "EUR", "GBP", "JPY", "USD", "ZAUD", 
 
 _KRAKEN_FIAT_LIST = list(set(list(_KRAKEN_FIAT_SET) + list(_FIAT_SET)))
 
-# Kraken yield-bearing asset suffixes
-# .B = balances in new yield-bearing products
-# .F = balances earning automatically in Kraken Rewards (formerly .S staking)
-# See: https://docs.kraken.com/rest/
-
-
-def _is_yield_or_historical_asset(asset: str) -> bool:
-    """Check if an asset has a yield-bearing or historical suffix.
-
-    These suffixes indicate read-only assets where the base asset should be used:
-    - .B = balances in new yield-bearing products
-    - .F = balances earning automatically in Kraken Rewards
-    - .HOLD = historical/old asset format
-
-    Args:
-        asset: The asset symbol to check.
-
-    Returns:
-        True if the asset has a yield-bearing or historical suffix, False otherwise.
-    """
-    return asset.endswith(".B") or asset.endswith(".F") or asset.endswith(".HOLD")
-
-
 class InputPlugin(AbstractCcxtInputPlugin):
+    # Suffixes to strip to get base asset (order matters - longer first)
+    _ASSET_SUFFIXES: Tuple[str, ...] = (".HOLD", ".HO", ".B", ".F", ".M", ".S")
     __EXCHANGE_NAME: str = "kraken"
     __PLUGIN_NAME: str = "kraken_REST"
     __DEFAULT_THREAD_COUNT: int = 1
@@ -205,34 +184,18 @@ class InputPlugin(AbstractCcxtInputPlugin):
         return self.__end_date
 
     def _get_base_from_asset(self, asset: str) -> str:
-        # Handle Kraken yield-bearing assets (.B, .F, .HOLD suffixes)
-        # These are read-only assets - to interact with them, use the base asset
-        # e.g., USDT.B -> USDT, SUI.F -> SUI, USD.HOLD -> USD
-        # .HOLD is a historical/old asset format (5 chars)
-        # See: https://support.kraken.com/hc/en-us/articles/360001185506-How-to-interpret-asset-codes
-        if asset.endswith(".HOLD"):
-            base_asset = asset[:-5]
-            self.__logger.debug("Stripping historical suffix from asset %s -> %s", asset, base_asset)
-            return self.base_id_to_base.get(base_asset, base_asset)
-        if asset.endswith(".B") or asset.endswith(".F"):
-            base_asset = asset[:-2]
-            self.__logger.debug("Stripping yield-bearing suffix from asset %s -> %s", asset, base_asset)
-            return self.base_id_to_base.get(base_asset, base_asset)
-        # Handle Kraken staking assets with numeric days suffix (.S, .M)
-        # Examples: SOL03.S -> SOL, DOT28.S -> DOT, ATOM21.S -> ATOM
-        # The .S suffix is used for staking (formerly .S staking), .M may also appear
-        # Format: ASSET + digits + .S or ASSET + digits + .M
-        if asset.endswith(".S") or asset.endswith(".M"):
-            # Find the position where the suffix starts (last 2 chars: .S or .M)
-            suffix_len = 2
-            # Look for digits before the suffix and strip them too
-            base_with_possible_num = asset[:-suffix_len]
-            # Strip trailing digits (the days-to-unstake number)
-            while base_with_possible_num and base_with_possible_num[-1].isdigit():
-                base_with_possible_num = base_with_possible_num[:-1]
-            if base_with_possible_num and base_with_possible_num != asset:
-                self.__logger.debug("Stripping staking suffix from asset %s -> %s", asset, base_with_possible_num)
-                return self.base_id_to_base.get(base_with_possible_num, base_with_possible_num)
+        # Try to strip each suffix in order (longer suffixes first to avoid partial matches)
+        for suffix in self._ASSET_SUFFIXES:
+            if asset.endswith(suffix):
+                base_asset = asset[: -len(suffix)]
+                # For staking assets (.S, .M), strip trailing digits too
+                if suffix in (".S", ".M"):
+                    while base_asset and base_asset[-1].isdigit():
+                        base_asset = base_asset[:-1]
+                if base_asset and base_asset != asset:
+                    self.__logger.debug("Stripping suffix from asset %s -> %s", asset, base_asset)
+                    return self.base_id_to_base.get(base_asset, base_asset)
+                break
         return self.base_id_to_base.get(asset, asset)
 
     def _get_process_deposits_pagination_detail_set(self) -> Optional[AbstractPaginationDetailSet]:
