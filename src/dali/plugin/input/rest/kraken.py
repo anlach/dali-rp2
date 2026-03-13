@@ -543,7 +543,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 if is_fiat_asset:
                     fiat_out_no_fee: str = str(amount)
                 else:
-                    fiat_out_no_fee = Keyword.UNKNOWN.value
+                    fiat_out_no_fee = None  # Not fiat, so no fiat_out
 
                 result.append(
                     OutTransaction(
