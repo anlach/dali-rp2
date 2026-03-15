@@ -165,7 +165,7 @@ class InputPlugin(AbstractInputPlugin):
     __MINIMUM_FIAT_PRECISION: RP2Decimal = RP2Decimal("0.01")
     __TIMEOUT: int = 30
 
-    __COINBASE: str = "Coinbase"
+    __COINBASE: str = "Coinbase Advanced"
     __COINBASE_PRO: str = "Coinbase Pro"
 
     def __init__(
@@ -873,7 +873,7 @@ class InputPlugin(AbstractInputPlugin):
                 fiat_in_no_fee=fiat_in_no_fee,
                 fiat_in_with_fee=fiat_in_with_fee,
                 fiat_fee=str(fiat_fee),
-                notes=None,
+                notes=f"(Coinbase API type: {transaction_type})",
             )
             in_transaction_list.append(in_transaction)
             if transaction_type == _TRADE:
@@ -905,7 +905,7 @@ class InputPlugin(AbstractInputPlugin):
                 crypto_out_with_fee=str(-crypto_amount),
                 fiat_out_no_fee=str(-native_amount),
                 fiat_fee=str(fiat_fee),
-                notes=None,
+                notes=f"(Coinbase API type: {transaction_type})",
             )
             out_transaction_list.append(out_transaction)
             if transaction_type == _TRADE:
@@ -1060,7 +1060,7 @@ class InputPlugin(AbstractInputPlugin):
                 # ignoring Coinbase's apparently inconsistent values for str(-native_amount)
                 fiat_out_no_fee=str(crypto_out_no_fee * spot_price),
                 fiat_fee=str(fiat_fee),
-                notes=None,
+                notes=f"(Coinbase API type: {transaction_type})",
             )
             out_transaction_list.append(out_transaction)
 

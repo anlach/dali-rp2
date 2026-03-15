@@ -58,7 +58,7 @@ class PairConverterPlugin(AbstractCcxtPairConverterPlugin):
         exchange_locked: Optional[bool] = None,
         untradeable_assets: Optional[str] = None,
         aliases: Optional[str] = None,
-        use_quarterly_zip: bool = False,
+        use_quarterly_zip: Optional[bool] = False,
     ) -> None:
         cache_modifier = fiat_priority if fiat_priority else ""
         super().__init__(
