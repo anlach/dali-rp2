@@ -85,6 +85,7 @@ _PRODUCT_ID: str = "product_id"
 _RESOURCE: str = "resource"
 _SELL: str = "sell"
 _SEND: str = "send"
+_RECEIVE: str = "receive"
 _STAKING_REWARD: str = "staking_reward"
 _STAKING_TRANSFER: str = "staking_transfer"
 _STATUS: str = "status"
@@ -491,7 +492,7 @@ class InputPlugin(AbstractInputPlugin):
             raw_data: str = json.dumps(transaction)
             self.__logger.debug("Transaction: %s", raw_data)
             transaction_type: str = transaction[_TYPE]
-            if transaction_type in {_PRIME_WITHDRAWAL, _PRO_DEPOSIT, _PRO_WITHDRAWAL, _EXCHANGE_DEPOSIT, _EXCHANGE_WITHDRAWAL, _SEND, _STAKING_TRANSFER}:
+            if transaction_type in {_PRIME_WITHDRAWAL, _PRO_DEPOSIT, _PRO_WITHDRAWAL, _EXCHANGE_DEPOSIT, _EXCHANGE_WITHDRAWAL, _SEND, _RECEIVE, _STAKING_TRANSFER}:
                 self._process_transfer(transaction, currency, in_transaction_list, out_transaction_list, intra_transaction_list)
             elif transaction_type in {_BUY, _SELL, _TRADE}:
                 self._process_fill(
@@ -659,6 +660,7 @@ class InputPlugin(AbstractInputPlugin):
                     spot_price=None,
                     crypto_sent=str(amount),
                     crypto_received=str(amount),
+                    notes=f"(Coinbase API type: {transaction_type})",
                 )
             )
         elif transaction_type in [_PRO_DEPOSIT, _EXCHANGE_DEPOSIT]:
@@ -676,9 +678,10 @@ class InputPlugin(AbstractInputPlugin):
                     spot_price=None,
                     crypto_sent=str(-amount),
                     crypto_received=str(-amount),
+                    notes=f"(Coinbase API type: {transaction_type})",
                 )
             )
-        elif transaction_type == _SEND:
+        elif transaction_type in {_SEND, _RECEIVE}:
             transaction_network = transaction[_NETWORK]
             crypto_hash: str = transaction_network[_HASH] if _HASH in transaction_network else Keyword.UNKNOWN.value
             if amount < ZERO:
@@ -708,7 +711,7 @@ class InputPlugin(AbstractInputPlugin):
                             crypto_out_with_fee=str(-amount),
                             fiat_out_no_fee=str(-native_amount),
                             fiat_fee="0",
-                            notes=f"{self.__transaction_details_or_default(transaction, _SUBTITLE)}",
+                            notes=f"{self.__transaction_details_or_default(transaction, _SUBTITLE)} (Coinbase API type: {transaction_type})",
                         )
                     )
                 elif _FROM in transaction and self.__transaction_details_or_default(transaction, _SUBTITLE).startswith("From Coinbase"):
@@ -729,7 +732,7 @@ class InputPlugin(AbstractInputPlugin):
                             crypto_out_with_fee=str(-amount),
                             fiat_out_no_fee=str(-native_amount),
                             fiat_fee="0",
-                            notes="Coinbase EARN reversal",
+                            notes=f"Coinbase EARN reversal (Coinbase API type: {transaction_type})",
                         )
                     )
                 elif currency in _STABLECOIN_INTERMEDIARIES:
@@ -750,6 +753,7 @@ class InputPlugin(AbstractInputPlugin):
                             spot_price=str(native_amount / amount),
                             crypto_sent=str(-amount),
                             crypto_received=Keyword.UNKNOWN.value,
+                            notes=f"(Coinbase API type: {transaction_type})",
                         )
                     )
             else: # amount >= ZERO
@@ -781,7 +785,7 @@ class InputPlugin(AbstractInputPlugin):
                 intra_transaction_list.append(
                     IntraTransaction(
                         plugin=self.__COINBASE,
-                        unique_id=transaction[_ID],
+                        unique_id=crypto_hash,
                         raw_data=raw_data,
                         timestamp=transaction[_CREATED_AT],
                         asset=currency,
@@ -792,6 +796,7 @@ class InputPlugin(AbstractInputPlugin):
                         spot_price=str(native_amount / amount),
                         crypto_sent=Keyword.UNKNOWN.value,
                         crypto_received=str(amount),
+                        notes=f"(Coinbase API type: {transaction_type})",
                     )
                 )
 
