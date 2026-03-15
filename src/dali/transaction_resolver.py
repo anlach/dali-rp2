@@ -247,12 +247,9 @@ def _update_spot_price_from_web(transaction: AbstractTransaction, global_configu
     init_parameters: Dict[str, Any] = transaction.constructor_parameter_dictionary
     native_fiat = global_configuration[Keyword.NATIVE_FIAT.value]
 
-    if transaction.spot_price is None:  # type: ignore
-        return transaction
-
-    # Skip price lookup for assets marked NOPRICE (e.g., LP tokens have no market)
-    if transaction.notes and "NOPRICE" in transaction.notes:
-        LOGGER.debug("Skipping price lookup for %s (marked NOPRICE)", transaction.asset)
+    # Skip price lookup for LP tokens (they have no market price)
+    if transaction.asset == "LP":  # type: ignore
+        LOGGER.debug("Skipping price lookup for LP token")
         return transaction
 
     # If the crypto amount is very small (< $0.01), sometimes exchanges (like Coinbase) report the fiat_amount as zero. Since DaLI computes spot_price
