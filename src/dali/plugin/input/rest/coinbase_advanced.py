@@ -85,6 +85,7 @@ _PRODUCT_ID: str = "product_id"
 _RESOURCE: str = "resource"
 _SELL: str = "sell"
 _SEND: str = "send"
+_RECEIVE: str = "receive"
 _STAKING_REWARD: str = "staking_reward"
 _STAKING_TRANSFER: str = "staking_transfer"
 _STATUS: str = "status"
@@ -491,7 +492,7 @@ class InputPlugin(AbstractInputPlugin):
             raw_data: str = json.dumps(transaction)
             self.__logger.debug("Transaction: %s", raw_data)
             transaction_type: str = transaction[_TYPE]
-            if transaction_type in {_PRIME_WITHDRAWAL, _PRO_DEPOSIT, _PRO_WITHDRAWAL, _EXCHANGE_DEPOSIT, _EXCHANGE_WITHDRAWAL, _SEND, _STAKING_TRANSFER}:
+            if transaction_type in {_PRIME_WITHDRAWAL, _PRO_DEPOSIT, _PRO_WITHDRAWAL, _EXCHANGE_DEPOSIT, _EXCHANGE_WITHDRAWAL, _SEND, _RECEIVE, _STAKING_TRANSFER}:
                 self._process_transfer(transaction, currency, in_transaction_list, out_transaction_list, intra_transaction_list)
             elif transaction_type in {_BUY, _SELL, _TRADE}:
                 self._process_fill(
@@ -678,7 +679,7 @@ class InputPlugin(AbstractInputPlugin):
                     crypto_received=str(-amount),
                 )
             )
-        elif transaction_type == _SEND:
+        elif transaction_type in {_SEND, _RECEIVE}:
             transaction_network = transaction[_NETWORK]
             crypto_hash: str = transaction_network[_HASH] if _HASH in transaction_network else Keyword.UNKNOWN.value
             if amount < ZERO:
@@ -781,7 +782,7 @@ class InputPlugin(AbstractInputPlugin):
                 intra_transaction_list.append(
                     IntraTransaction(
                         plugin=self.__COINBASE,
-                        unique_id=transaction[_ID],
+                        unique_id=crypto_hash,
                         raw_data=raw_data,
                         timestamp=transaction[_CREATED_AT],
                         asset=currency,
