@@ -402,9 +402,10 @@ def _create_zap_out_transactions(
     pool_name = cost_basis.get("pool", "unknown")
 
     raw_data = f"Zap Out: {lp_token.amount} LP -> {ada_received.amount} ADA"
-    notes = f"Minswap LP Removal from {pool_name} pool - Gain/Loss: {gain_loss:.2f} ADA"
+    notes = f"Minswap LP Removal from {pool_name} pool - Gain/Loss: {gain_loss:.2f} ADA | NOPRICE"
 
     # OutTransaction: Remove/sell LP tokens
+    # Note: LP tokens have no market price, so we mark with NOPRICE to skip price lookup
     result.append(
         OutTransaction(
             plugin=plugin_name,

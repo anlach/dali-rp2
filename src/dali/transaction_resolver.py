@@ -250,6 +250,11 @@ def _update_spot_price_from_web(transaction: AbstractTransaction, global_configu
     if transaction.spot_price is None:  # type: ignore
         return transaction
 
+    # Skip price lookup for assets marked NOPRICE (e.g., LP tokens have no market)
+    if transaction.notes and "NOPRICE" in transaction.notes:
+        LOGGER.debug("Skipping price lookup for %s (marked NOPRICE)", transaction.asset)
+        return transaction
+
     # If the crypto amount is very small (< $0.01), sometimes exchanges (like Coinbase) report the fiat_amount as zero. Since DaLI computes spot_price
     # as fiat amount/crypto amount, if fiat amount is 0, then spot price is 0 as well (see https://github.com/eprbell/dali-rp2/issues/19). This breaks
     # the contract with RP2, which requires spot_price to be > 0. If this situation is detected and the user passed the read_spot_price_from_web, then
