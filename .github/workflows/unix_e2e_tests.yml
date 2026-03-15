@@ -40,6 +40,8 @@ jobs:
         with:
           repository: anlach/rp2
           path: rp2
+          ref: ${{ github.ref }}
+          fetch-depth: 1
 
       - name: Checkout dali-rp2
         uses: actions/checkout@v4
