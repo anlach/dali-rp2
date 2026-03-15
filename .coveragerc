@@ -1,0 +1,29 @@
+[run]
+source = src/dali
+branch = True
+omit =
+    */plugin/country/*
+    */plugin/input/csv/bitbank*
+    */plugin/input/csv/blockfi*
+    */plugin/input/csv/coincheck*
+    */plugin/input/csv/electrum*
+    */plugin/input/csv/ledger*
+    */plugin/input/csv/nexo*
+    */plugin/input/csv/pionex*
+    */plugin/input/csv/strike*
+    */plugin/input/csv/trezor*
+    */plugin/input/csv/trezor_*
+    */plugin/input/ods/*
+    */plugin/input/rest/*
+    */plugin/pair_converter/ccxt*
+    */plugin/pair_converter/ccxt_*
+    */plugin/pair_converter/csv/*
+    */plugin/pair_converter/coinbase*
+
+[report]
+precision = 2
+show_missing = True
+skip_empty = True
+
+[html]
+directory = htmlcov
