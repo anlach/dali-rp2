@@ -263,6 +263,12 @@ def _create_swap_transactions(
     # Cost basis = ADA given (including fees)
     cost_basis = input_amount + total_fee
 
+    # Include derivation info for when direct price lookup fails
+    # Format: DERIVE:<input_currency>:<input_amount_with_fees>
+    # This allows deriving token price from the known ADA price
+    derive_info = f"DERIVE:{input_currency}:{cost_basis}"
+    notes_with_derive = f"{notes} | {derive_info}"
+
     result.append(
         InTransaction(
             plugin=plugin_name,
@@ -276,7 +282,7 @@ def _create_swap_transactions(
             spot_price=Keyword.UNKNOWN.value,
             crypto_in=str(output_asset.amount),
             crypto_fee=str(execution_fee),
-            notes=notes,
+            notes=notes_with_derive,
         )
     )
 
@@ -317,7 +323,8 @@ def _create_lp_deposit_transactions(
     lp_pair = f"ADA-{token_currency}" if token_currency else "ADA-unknown"
 
     # Store cost basis for later LP removal
-    lp_key = str(int(lp_token.amount))
+    # Key must include both pool AND LP amount to avoid collisions between different pools
+    lp_key = f"{lp_pair}_{int(lp_token.amount)}"
     _LP_COST_BASES[lp_key] = {
         "ada_cost": ada_amount,
         "token_cost": token_amount,
@@ -375,8 +382,15 @@ def _create_zap_out_transactions(
 
     total_fee = execution_fee + on_chain_fee
 
-    # Look up cost basis for this LP amount
-    lp_key = str(int(lp_token.amount))
+    # Look up cost basis for this LP amount - must match the key format from deposit (pool + amount)
+    # We need to determine the pool from the assets being received (the non-LP asset)
+    pool_name = "unknown"
+    for asset in receive.assets:
+        if asset.currency != "LP":
+            pool_name = f"ADA-{asset.currency}"
+            break
+
+    lp_key = f"{pool_name}_{int(lp_token.amount)}"
     cost_basis = _LP_COST_BASES.get(lp_key, {"ada_cost": 0.0, "token_cost": 0.0, "token_currency": "UNKNOWN", "pool": "unknown"})
 
     # Calculate gain/loss
