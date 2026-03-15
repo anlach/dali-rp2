@@ -225,7 +225,7 @@ def _try_derive_spot_price(
         derived_price = (input_amount * conversion.rate) / output_amount
 
         LOGGER.debug(
-            "Derived spot price for %s: %s %s = %s (from %s %s * %s %s/%s)",
+            "Derived spot price for %s: %s %s = %s (from %s %s * %s %s/%s / %s)",
             output_asset,
             derived_price,
             native_fiat,
@@ -233,6 +233,7 @@ def _try_derive_spot_price(
             input_currency,
             conversion.rate,
             native_fiat,
+            output_amount,
         )
 
         return derived_price
@@ -246,7 +247,9 @@ def _update_spot_price_from_web(transaction: AbstractTransaction, global_configu
     init_parameters: Dict[str, Any] = transaction.constructor_parameter_dictionary
     native_fiat = global_configuration[Keyword.NATIVE_FIAT.value]
 
-    if transaction.spot_price is None:  # type: ignore
+    # Skip price lookup for LP tokens (they have no market price)
+    if transaction.asset == "LP":  # type: ignore
+        LOGGER.debug("Skipping price lookup for LP token")
         return transaction
 
     # If the crypto amount is very small (< $0.01), sometimes exchanges (like Coinbase) report the fiat_amount as zero. Since DaLI computes spot_price
