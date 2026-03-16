@@ -1,19 +1,19 @@
 # E2E Test Coverage Progress Report
 
 ## Current Status
-- **Current Coverage**: 69.29%
+- **Current Coverage**: 69.46%
 - **Target Coverage**: 98%
-- **Gap**: ~28.71%
+- **Gap**: ~28.54%
 
 ## Coverage by Priority Files
 
 | File | Current | Target | Gap | Notes |
 |------|---------|--------|-----|-------|
 | dali_main.py | 78.77% | 98% | ~19% | Added tests for exception handling, ThreadPool, missing ini file |
+| abstract_input_plugin.py | 75.47% | 98% | ~23% | Added tests for cache operations, is_native_fiat |
 | kraken.py | 52.20% | 98% | ~46% | REST plugin, needs more API mocking tests |
 | transaction_resolver.py | 68.31% | 98% | ~30% | Core transaction resolution logic |
-| abstract_ccxt_input_plugin.py | 89.07% | 98% | ~9% | CCXT abstract plugin |
-| abstract_input_plugin.py | 52.83% | 98% | ~45% | Abstract input plugin |
+| abstract_ccxt_input_plugin.py | 88.00% | 98% | ~10% | CCXT abstract plugin |
 | coinbase.py | 63.94% | 98% | ~34% | REST plugin |
 | coinbase_advanced.py | 60.94% | 98% | ~37% | REST plugin |
 
