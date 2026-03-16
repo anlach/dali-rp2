@@ -124,6 +124,26 @@ def create_out_transaction(
     # For OutTransaction, crypto_fee is required
     # Note: Either crypto_fee OR fiat_fee can be set, not both (for InTransaction)
     # But for OutTransaction we just use crypto_fee
+    if crypto_out_no_fee == Keyword.UNKNOWN.value:
+        # Handle UNKNOWN case - need to pass as-is
+        return OutTransaction(
+            plugin="test",
+            unique_id=unique_id,
+            raw_data="test_data",
+            timestamp=str(timestamp or datetime.now(timezone.utc)),
+            asset=asset,
+            exchange=exchange,
+            holder=holder,
+            transaction_type="Sell",
+            spot_price=spot_price,
+            crypto_out_no_fee=crypto_out_no_fee,
+            crypto_fee="0.001",
+            crypto_out_with_fee=Keyword.UNKNOWN.value,
+            fiat_out_no_fee=fiat_out_no_fee,
+            fiat_fee=None,
+            notes=notes,
+            fiat_ticker=fiat_ticker,
+        )
     return OutTransaction(
         plugin="test",
         unique_id=unique_id,
@@ -795,6 +815,77 @@ class TestEdgeCases:
         result = _resolve_fields("f1", "f2", "", "", mock_tx1, mock_tx2)
         assert result == ""
 
+    def test_resolve_fields_conflict_numeric(self) -> None:
+        """Test _resolve_fields raises on numeric conflict."""
+        mock_tx1 = MagicMock()
+        mock_tx1.unique_id = "tx1"
+        mock_tx1.timestamp_value = datetime.now()
+        mock_tx2 = MagicMock()
+        mock_tx2.unique_id = "tx2"
+        mock_tx2.timestamp_value = datetime.now()
+        
+        # Numeric conflict should raise
+        with pytest.raises(Exception):
+            _resolve_fields("f1", "f2", "100", "200", mock_tx1, mock_tx2)
+
+    def test_resolve_fields_conflict_string(self) -> None:
+        """Test _resolve_fields raises on string conflict."""
+        mock_tx1 = MagicMock()
+        mock_tx1.unique_id = "tx1"
+        mock_tx1.timestamp_value = datetime.now()
+        mock_tx2 = MagicMock()
+        mock_tx2.unique_id = "tx2"
+        mock_tx2.timestamp_value = datetime.now()
+        
+        # String conflict should raise
+        with pytest.raises(Exception):
+            _resolve_fields("f1", "f2", "value1", "value2", mock_tx1, mock_tx2)
+
+    def test_resolve_fields_both_unknown_with_disallow(self) -> None:
+        """Test _resolve_fields raises when both values are unknown and disallow_two_unknown is True."""
+        mock_tx1 = MagicMock()
+        mock_tx1.unique_id = "tx1"
+        mock_tx1.timestamp_value = datetime.now()
+        mock_tx2 = MagicMock()
+        mock_tx2.unique_id = "tx2"
+        mock_tx2.timestamp_value = datetime.now()
+        
+        # Both unknown should raise when disallow_two_unknown is True (default)
+        with pytest.raises(Exception):
+            _resolve_fields("f1", "f2", Keyword.UNKNOWN.value, Keyword.UNKNOWN.value, mock_tx1, mock_tx2)
+
+    def test_resolve_fields_both_unknown_allowed(self) -> None:
+        """Test _resolve_fields allows both unknown when disallow_two_unknown is False."""
+        mock_tx1 = MagicMock()
+        mock_tx1.unique_id = "tx1"
+        mock_tx1.timestamp_value = datetime.now()
+        mock_tx2 = MagicMock()
+        mock_tx2.unique_id = "tx2"
+        mock_tx2.timestamp_value = datetime.now()
+        
+        # Both unknown is OK when disallow_two_unknown is False
+        result = _resolve_fields(
+            "f1", "f2", Keyword.UNKNOWN.value, Keyword.UNKNOWN.value,
+            mock_tx1, mock_tx2, disallow_two_unknown=False
+        )
+        assert result == Keyword.UNKNOWN.value
+
+    def test_resolve_fields_override_second_parameter(self) -> None:
+        """Test _resolve_fields with if_conflict_override_second_parameter."""
+        mock_tx1 = MagicMock()
+        mock_tx1.unique_id = "tx1"
+        mock_tx1.timestamp_value = datetime.now()
+        mock_tx2 = MagicMock()
+        mock_tx2.unique_id = "tx2"
+        mock_tx2.timestamp_value = datetime.now()
+        
+        # Conflict with override should return first value
+        result = _resolve_fields(
+            "f1", "f2", "value1", "value2", mock_tx1, mock_tx2,
+            if_conflict_override_second_parameter=True
+        )
+        assert result == "value1"
+
     def test_resolve_optional_fields_with_unknown(self) -> None:
         """Test resolving optional fields with UNKNOWN values."""
         mock_tx1 = MagicMock()
@@ -806,6 +897,21 @@ class TestEdgeCases:
         
         result = _resolve_optional_fields(
             "f1", "f2", Keyword.UNKNOWN.value, "value2", mock_tx1, mock_tx2
+        )
+        assert result == "value2"
+
+    def test_resolve_optional_fields_with_none(self) -> None:
+        """Test resolving optional fields with None values."""
+        mock_tx1 = MagicMock()
+        mock_tx1.unique_id = "tx1"
+        mock_tx1.timestamp_value = datetime.now()
+        mock_tx2 = MagicMock()
+        mock_tx2.unique_id = "tx2"
+        mock_tx2.timestamp_value = datetime.now()
+        
+        # None values should be converted to empty string
+        result = _resolve_optional_fields(
+            "f1", "f2", None, "value2", mock_tx1, mock_tx2
         )
         assert result == "value2"
 
@@ -824,6 +930,12 @@ class TestEdgeCases:
         tx = create_intra_transaction(from_exchange="kraken")
         assert _get_originating_exchange(tx) == "kraken"
 
+    def test_get_originating_exchange_invalid_type(self) -> None:
+        """Test getting originating exchange raises on invalid type."""
+        mock_tx = MagicMock(spec=[])  # Not a transaction type
+        with pytest.raises(Exception):
+            _get_originating_exchange(mock_tx)
+
     def test_resolve_transactions_invalid_type(self) -> None:
         """Test resolve_transactions with invalid type."""
         config = {
@@ -834,6 +946,240 @@ class TestEdgeCases:
         # Pass a non-List
         with pytest.raises(Exception):
             resolve_transactions("not a list", config, False)
+
+
+class TestResolveIntraIntraTransaction:
+    """Test _resolve_intra_intra_transaction for full coverage."""
+
+    def test_intra_intra_max_timestamp(self) -> None:
+        """Test that max timestamp is selected."""
+        timestamp1 = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        timestamp2 = datetime(2024, 1, 15, 11, 0, 0, tzinfo=timezone.utc)
+        
+        tx1 = create_intra_transaction(
+            timestamp=timestamp1,
+            unique_id="intra_001",
+            notes="First",
+            from_exchange="coinbase",
+        )
+        tx2 = create_intra_transaction(
+            timestamp=timestamp2,
+            unique_id="intra_001",
+            notes="Second",
+            from_exchange="coinbase",
+        )
+        
+        from dali.transaction_resolver import _resolve_intra_intra_transaction
+        result = _resolve_intra_intra_transaction(tx1, tx2, None)
+        
+        # Max timestamp should be used
+        assert result.timestamp_value == timestamp2
+
+
+class TestResolveInOutTransaction:
+    """Test _resolve_in_out_transaction for full coverage."""
+
+    def test_in_out_basic_resolution(self) -> None:
+        """Test basic InOut resolution."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        
+        in_tx = create_in_transaction(
+            timestamp=timestamp,
+            unique_id="tx001",
+            crypto_in="1.0",
+            spot_price="35000",
+            exchange="binance",
+            holder="main",
+        )
+        out_tx = create_out_transaction(
+            timestamp=timestamp,
+            unique_id="tx001",
+            crypto_out_no_fee="0.5",
+            spot_price="35000",
+            exchange="coinbase",
+            holder="main",
+        )
+        
+        from dali.transaction_resolver import _resolve_in_out_transaction
+        result = _resolve_in_out_transaction(in_tx, out_tx, None)
+        
+        assert isinstance(result, IntraTransaction)
+        assert result.spot_price == "35000"
+
+    def test_in_out_with_notes(self) -> None:
+        """Test InOut resolution with notes."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        
+        in_tx = create_in_transaction(
+            timestamp=timestamp,
+            unique_id="tx001",
+            crypto_in="1.0",
+            spot_price="35000",
+            exchange="binance",
+            holder="main",
+            notes="Buy note",
+        )
+        out_tx = create_out_transaction(
+            timestamp=timestamp,
+            unique_id="tx001",
+            crypto_out_no_fee="0.5",
+            spot_price="35000",
+            exchange="coinbase",
+            holder="main",
+            notes="Sell note",
+        )
+        
+        from dali.transaction_resolver import _resolve_in_out_transaction
+        result = _resolve_in_out_transaction(in_tx, out_tx, "Combined")
+        
+        assert isinstance(result, IntraTransaction)
+        assert "Buy note" in result.notes
+        assert "Sell note" in result.notes
+
+
+class TestGetPairConversionRate:
+    """Test _get_pair_conversion_rate error paths."""
+
+    def test_no_pair_converter_plugin(self) -> None:
+        """Test error when no pair converter is configured."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        
+        config = {
+            Keyword.NATIVE_FIAT.value: "USD",
+            Keyword.HISTORICAL_PAIR_CONVERTERS.value: [],  # Empty list
+        }
+        
+        with pytest.raises(Exception):
+            _get_pair_conversion_rate(timestamp, "BTC", "USD", "binance", config)
+
+    def test_no_price_data_found(self) -> None:
+        """Test error when no price data is available."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        
+        # Use a mock converter that returns None for rate
+        mock_converter = MagicMock()
+        mock_converter.get_conversion_rate.return_value = None
+        mock_converter.name.return_value = "MockConverter"
+        
+        config = {
+            Keyword.NATIVE_FIAT.value: "USD",
+            Keyword.HISTORICAL_PAIR_CONVERTERS.value: [mock_converter],
+        }
+        
+        with pytest.raises(Exception):
+            _get_pair_conversion_rate(timestamp, "UNKNOWN", "USD", "binance", config)
+
+
+class TestApplyTransactionHintErrors:
+    """Test _apply_transaction_hint error paths."""
+
+    def test_hint_with_invalid_direction(self) -> None:
+        """Test hint with invalid direction raises error."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        tx = create_in_transaction(timestamp=timestamp)
+        
+        config = {
+            Keyword.NATIVE_FIAT.value: "USD",
+            Keyword.TRANSACTION_HINTS.value: {
+                tx.unique_id: ("invalid_dir", "Buy", "Test notes"),
+            },
+            Keyword.HISTORICAL_PAIR_CONVERTERS.value: [MockPairConverterWithPrices()],
+        }
+        
+        with pytest.raises(Exception):
+            _apply_transaction_hint(tx, config)
+
+    def test_intra_to_in_with_non_unknown_from_exchange(self) -> None:
+        """Test conversion from intra to in fails when from_exchange is not unknown."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        tx = create_intra_transaction(
+            timestamp=timestamp,
+            from_exchange="binance",  # Not unknown - should fail
+            from_holder="main",
+            to_exchange="kraken",
+            to_holder="main",
+        )
+        
+        config = {
+            Keyword.NATIVE_FIAT.value: "USD",
+            Keyword.TRANSACTION_HINTS.value: {
+                tx.unique_id: ("in", "Buy", "Test notes"),
+            },
+            Keyword.HISTORICAL_PAIR_CONVERTERS.value: [MockPairConverterWithPrices()],
+        }
+        
+        with pytest.raises(Exception):
+            _apply_transaction_hint(tx, config)
+
+    def test_intra_to_out_with_non_unknown_to_exchange(self) -> None:
+        """Test conversion from intra to out fails when to_exchange is not unknown."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        tx = create_intra_transaction(
+            timestamp=timestamp,
+            from_exchange="binance",
+            from_holder="main",
+            to_exchange="kraken",  # Not unknown - should fail
+            to_holder="main",
+        )
+        
+        config = {
+            Keyword.NATIVE_FIAT.value: "USD",
+            Keyword.TRANSACTION_HINTS.value: {
+                tx.unique_id: ("out", "Sell", "Test notes"),
+            },
+            Keyword.HISTORICAL_PAIR_CONVERTERS.value: [MockPairConverterWithPrices()],
+        }
+        
+        with pytest.raises(Exception):
+            _apply_transaction_hint(tx, config)
+
+
+class TestResolveTransactionsErrorPaths:
+    """Test resolve_transactions error paths."""
+
+    def test_resolve_transactions_more_than_two_same_id(self) -> None:
+        """Test error when more than 2 transactions with same unique_id."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        
+        txs = [
+            create_in_transaction(timestamp=timestamp, unique_id="tx123"),
+            create_in_transaction(timestamp=timestamp, unique_id="tx123"),
+            create_in_transaction(timestamp=timestamp, unique_id="tx123"),
+        ]
+        
+        config = {
+            Keyword.NATIVE_FIAT.value: "USD",
+            Keyword.HISTORICAL_PAIR_CONVERTERS.value: [MockPairConverterWithPrices()],
+        }
+        
+        with pytest.raises(Exception):
+            resolve_transactions(txs, config, False)
+
+    def test_resolve_transactions_zero_in_list(self) -> None:
+        """Test error when transaction list has zero transactions."""
+        # This is a theoretical test - empty lists are handled differently
+        # Just verify no crash on empty list
+        config = {
+            Keyword.NATIVE_FIAT.value: "USD",
+            Keyword.HISTORICAL_PAIR_CONVERTERS.value: [MockPairConverterWithPrices()],
+        }
+        
+        result = resolve_transactions([], config, False)
+        assert result == []
+
+    def test_resolve_transactions_invalid_transaction_in_list(self) -> None:
+        """Test error when transaction in list is not an AbstractTransaction."""
+        timestamp = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        
+        txs = ["not a transaction", 123]
+        
+        config = {
+            Keyword.NATIVE_FIAT.value: "USD",
+            Keyword.HISTORICAL_PAIR_CONVERTERS.value: [MockPairConverterWithPrices()],
+        }
+        
+        with pytest.raises(Exception):
+            resolve_transactions(txs, config, False)
 
 
 if __name__ == "__main__":
