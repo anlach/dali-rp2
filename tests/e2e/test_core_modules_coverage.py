@@ -70,60 +70,8 @@ from dali.plugin.pair_converter.coinbase_advanced import (
 )
 from dali.transaction_resolver import resolve_transactions
 
-
-# Mock prices for testing
-MOCK_BTC_USD_PRICE = "35000"
-MOCK_ETH_USD_PRICE = "2000"
-
-
-class MockPairConverter:
-    """Mock pair converter for testing."""
-
-    def __init__(
-        self,
-        btc_price: str = MOCK_BTC_USD_PRICE,
-        eth_price: str = MOCK_ETH_USD_PRICE,
-    ):
-        self._btc_price = btc_price
-        self._eth_price = eth_price
-
-    def name(self) -> str:
-        return "MockPairConverter"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_converter"
-
-    def save_historical_price_cache(self) -> None:
-        """Mock method - does nothing."""
-        pass
-
-    def load_historical_price_cache(self) -> bool:
-        """Mock method - returns False."""
-        return False
-
-    def get_historic_bar_from_native_source(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[RP2Decimal]:
-        if from_asset == "BTC" and to_asset == "USD":
-            return RP2Decimal(self._btc_price)
-        if from_asset == "ETH" and to_asset == "USD":
-            return RP2Decimal(self._eth_price)
-        if from_asset == "USDT" and to_asset == "USD":
-            return RP2Decimal("1")
-        return None
+# Import shared fixtures from e2e_shared.py
+from e2e_shared import MockPairConverter
 
 
 def _load_transactions_from_csv(in_csv: Optional[str] = None, out_csv: Optional[str] = None, intra_csv: Optional[str] = None) -> List[AbstractTransaction]:

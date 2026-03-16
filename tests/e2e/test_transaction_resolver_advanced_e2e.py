@@ -50,113 +50,17 @@ from dali.transaction_resolver import (
 )
 from dali.mapped_graph import MappedGraph
 
-
-class MockPairConverterWithPrices:
-    """Mock pair converter that supports various price lookups."""
-
-    def __init__(self):
-        self._prices = {
-            ("BTC", "USD"): RP2Decimal("35000"),
-            ("ETH", "USD"): RP2Decimal("2000"),
-            ("ADA", "USD"): RP2Decimal("0.35"),
-            ("EUR", "USD"): RP2Decimal("1.10"),
-            ("USD", "EUR"): RP2Decimal("0.909"),
-            ("USDT", "USD"): RP2Decimal("1"),
-            ("LP", "USD"): RP2Decimal("0"),
-            ("MIN", "USD"): None,  # No direct price - tests derivation
-            ("LUNC", "USD"): RP2Decimal("0.0001"),
-            ("BTC", "EUR"): RP2Decimal("32000"),
-            ("ETH", "EUR"): RP2Decimal("1800"),
-        }
-        self._derivation_price = RP2Decimal("0.05")
-
-    def name(self) -> str:
-        return "MockPairConverter"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_converter"
-
-    def get_historic_bar_from_native_source(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[RP2Decimal]:
-        return self._prices.get((from_asset, to_asset))
-
-    def optimize(self, manifest: Any) -> None:
-        pass
-
-    def save_historical_price_cache(self) -> None:
-        pass
-
-    @property
-    def historical_price_type(self) -> str:
-        return "mock"
+# Import shared fixtures from e2e_shared.py
+from e2e_shared import (
+    MockPairConverterWithPrices,
+    MockPairConverterFailing,
+    MockPairConverterMultiple,
+)
 
 
-class MockPairConverterFailing:
-    """Mock pair converter that always fails."""
-
-    def __init__(self):
-        self.call_count = 0
-
-    def name(self) -> str:
-        return "MockPairConverterFailing"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_failing"
-
-    def get_historic_bar_from_native_source(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[RP2Decimal]:
-        self.call_count += 1
-        return None
-
-    def optimize(self, manifest: Any) -> None:
-        pass
-
-    def save_historical_price_cache(self) -> None:
-        pass
-
-    @property
-    def historical_price_type(self) -> str:
-        return "mock_failing"
-
-
-class MockPairConverterMultiple:
-    """Mock pair converter that has multiple converters, first fails."""
-
-    def __init__(self):
-        self.converter1_failing = MockPairConverterFailing()
-        self.converter2_working = MockPairConverterWithPrices()
-
-    @property
-    def converters(self):
-        return [self.converter1_failing, self.converter2_working]
+# Note: This test file also has a local create_in_transaction and create_out_transaction
+# helper function that are different from the ones in e2e_shared.py because they don't
+# require parameters in the same way. We keep them here for test-specific customization.
 
 
 # Helper to create test transactions

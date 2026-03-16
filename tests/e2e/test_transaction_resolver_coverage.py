@@ -194,56 +194,8 @@ def create_intra_transaction(
     )
 
 
-class MockPairConverterWithPrices:
-    """Mock pair converter that supports various price lookups."""
-
-    def __init__(self):
-        self._prices = {
-            ("BTC", "USD"): RP2Decimal("35000"),
-            ("ETH", "USD"): RP2Decimal("2000"),
-            ("ADA", "USD"): RP2Decimal("0.35"),
-            ("EUR", "USD"): RP2Decimal("1.10"),
-            ("USD", "EUR"): RP2Decimal("0.909"),
-            ("USDT", "USD"): RP2Decimal("1"),
-            ("LP", "USD"): RP2Decimal("0"),
-            ("MIN", "USD"): None,  # No direct price - tests derivation
-            ("LUNC", "USD"): RP2Decimal("0.0001"),
-        }
-        self._derivation_price = RP2Decimal("0.05")
-
-    def name(self) -> str:
-        return "MockPairConverter"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_converter"
-
-    def get_historic_bar_from_native_source(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[RP2Decimal]:
-        return self._prices.get((from_asset, to_asset))
-
-    def optimize(self, manifest: Any) -> None:
-        pass
-
-    def save_historical_price_cache(self) -> None:
-        pass
-
-    @property
-    def historical_price_type(self) -> str:
-        return "mock"
+# Import shared fixtures from e2e_shared.py
+from e2e_shared import MockPairConverterWithPrices
 
 
 class TestFiatConversion:

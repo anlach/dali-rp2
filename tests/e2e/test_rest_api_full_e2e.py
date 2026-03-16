@@ -196,40 +196,8 @@ COINBASE_EXCHANGE_WITHDRAWAL = {
 # Helper Functions
 # =============================================================================
 
-class MockPairConverter:
-    """Mock pair converter that returns fixed prices for testing."""
-
-    def __init__(
-        self,
-        btc_price: str = "35000",
-        eth_price: str = "2000",
-    ):
-        self._btc_price = btc_price
-        self._eth_price = eth_price
-
-    def name(self) -> str:
-        return "MockPairConverter"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_converter"
-
-    def get_historic_bar_from_native_source(self, timestamp: Any, from_asset: str, to_asset: str, exchange: str) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(self, timestamp: Any, from_asset: str, to_asset: str, exchange: str) -> Optional[RP2Decimal]:
-        if from_asset == "BTC" and to_asset == "USD":
-            return RP2Decimal(self._btc_price)
-        if from_asset == "ETH" and to_asset == "USD":
-            return RP2Decimal(self._eth_price)
-        if from_asset == "USD" and to_asset == "USD":
-            return RP2Decimal("1")
-        return None
-
-    def optimize(self, manifest: Any) -> None:
-        pass
-
-    def save_historical_price_cache(self) -> None:
-        pass
+# Import shared fixtures from e2e_shared.py
+from e2e_shared import MockPairConverter
 
 
 def run_full_pipeline(plugin, mock_converter: Optional[MockPairConverter] = None) -> List[AbstractTransaction]:

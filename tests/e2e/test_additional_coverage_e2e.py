@@ -48,62 +48,8 @@ from dali.transaction_resolver import (
 from dali.plugin.input.csv.manual import InputPlugin as ManualInputPlugin
 from dali.plugin.input.csv.binance_com_supplemental import InputPlugin as BinanceSupplementalInputPlugin
 
-
-# Mock prices for testing
-MOCK_BTC_USD_PRICE = "35000"
-MOCK_ETH_USD_PRICE = "2000"
-MOCK_ADA_USD_PRICE = "0.35"
-MOCK_EUR_USD_PRICE = "1.10"  # For fiat conversion tests
-
-
-class MockPairConverterWithFiat:
-    """Mock pair converter that supports fiat conversion."""
-
-    def __init__(self):
-        self._prices = {
-            ("BTC", "USD"): RP2Decimal("35000"),
-            ("ETH", "USD"): RP2Decimal("2000"),
-            ("ADA", "USD"): RP2Decimal("0.35"),
-            ("EUR", "USD"): RP2Decimal("1.10"),
-            ("USD", "EUR"): RP2Decimal("0.909"),
-            ("USDT", "USD"): RP2Decimal("1"),
-            ("LP", "USD"): RP2Decimal("0"),  # LP tokens have no market price
-        }
-        self._derivation_price = RP2Decimal("0.05")  # For MIN token derivation
-
-    def name(self) -> str:
-        return "MockFiatPairConverter"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_fiat_converter"
-
-    def get_historic_bar_from_native_source(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[RP2Decimal]:
-        return self._prices.get((from_asset, to_asset))
-
-    def optimize(self, manifest: Any) -> None:
-        pass
-
-    def save_historical_price_cache(self) -> None:
-        pass
-
-    @property
-    def historical_price_type(self) -> str:
-        return "mock"
+# Import shared fixtures from e2e_shared.py
+from e2e_shared import MockPairConverterWithFiat
 
 
 class TestDerivationInfo:

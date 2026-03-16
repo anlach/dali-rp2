@@ -37,75 +37,8 @@ from dali.transaction_resolver import resolve_transactions
 from dali.plugin.input.csv.manual import InputPlugin as ManualInputPlugin
 from dali.plugin.input.csv.binance_com_supplemental import InputPlugin as BinanceSupplementalInputPlugin
 
-
-# Mock prices for testing
-MOCK_BTC_USD_PRICE = "35000"
-MOCK_ETH_USD_PRICE = "2000"
-MOCK_ADA_USD_PRICE = "0.35"
-
-
-class MockPairConverter:
-    """Mock pair converter that returns fixed prices for testing."""
-
-    def __init__(
-        self,
-        btc_price: str = MOCK_BTC_USD_PRICE,
-        eth_price: str = MOCK_ETH_USD_PRICE,
-        ada_price: str = MOCK_ADA_USD_PRICE,
-    ):
-        self._btc_price = btc_price
-        self._eth_price = eth_price
-        self._ada_price = ada_price
-        self._cache: Dict[Any, Any] = {}
-
-    def name(self) -> str:
-        return "MockPairConverter"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_converter"
-
-    def get_historic_bar_from_native_source(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[RP2Decimal]:
-        # Return mock prices for common conversions
-        if from_asset == "BTC" and to_asset == "USD":
-            return RP2Decimal(self._btc_price)
-        if from_asset == "USD" and to_asset == "BTC":
-            return RP2Decimal(str(1 / float(self._btc_price)))
-        if from_asset == "ETH" and to_asset == "USD":
-            return RP2Decimal(self._eth_price)
-        if from_asset == "USD" and to_asset == "ETH":
-            return RP2Decimal(str(1 / float(self._eth_price)))
-        if from_asset == "ADA" and to_asset == "USD":
-            return RP2Decimal(self._ada_price)
-        if from_asset == "USD" and to_asset == "ADA":
-            return RP2Decimal(str(1 / float(self._ada_price)))
-        # Handle USDT conversions
-        if from_asset == "USDT" and to_asset == "USD":
-            return RP2Decimal("1")
-        if from_asset == "USD" and to_asset == "USDT":
-            return RP2Decimal("1")
-        return None
-
-    def optimize(self, manifest: Any) -> None:
-        pass
-
-    def save_historical_price_cache(self) -> None:
-        # No-op for mock
-        pass
+# Import shared fixtures from e2e_shared.py
+from e2e_shared import MockPairConverter
 
 
 def _run_manual_full_pipeline(

@@ -36,53 +36,12 @@ from dali.ods_generator import generate_input_file
 from dali.transaction_resolver import resolve_transactions
 from dali.plugin.input.csv.yoroi import InputPlugin
 
+# Import shared fixtures from e2e_shared.py
+from e2e_shared import MockPairConverter
+
 
 # Mock price for ADA/USD - used in testing
 MOCK_ADA_USD_PRICE = "0.35"
-
-
-class MockPairConverter:
-    """Mock pair converter that returns fixed prices for testing."""
-
-    def __init__(self, price: str = MOCK_ADA_USD_PRICE):
-        self._price = price
-        self._cache: Dict[Any, Any] = {}
-
-    def name(self) -> str:
-        return "MockPairConverter"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_converter"
-
-    def get_historic_bar_from_native_source(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[RP2Decimal]:
-        # Return mock prices for common conversions
-        if from_asset == "ADA" and to_asset == "USD":
-            return RP2Decimal(self._price)
-        if from_asset == "USD" and to_asset == "ADA":
-            return RP2Decimal(str(1 / float(self._price)))
-        return None
-
-    def optimize(self, manifest: Any) -> None:
-        pass
-
-    def save_historical_price_cache(self) -> None:
-        # No-op for mock
-        pass
 
 
 def _run_full_pipeline(

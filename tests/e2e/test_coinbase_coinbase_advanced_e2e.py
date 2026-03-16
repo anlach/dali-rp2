@@ -39,68 +39,8 @@ from dali.transaction_resolver import resolve_transactions
 from dali.plugin.input.rest.coinbase import InputPlugin as CoinbaseInputPlugin
 from dali.plugin.input.rest.coinbase_advanced import InputPlugin as CoinbaseAdvancedInputPlugin
 
-
-# Mock data for testing
-MOCK_BTC_USD_PRICE = "35000"
-MOCK_ETH_USD_PRICE = "2000"
-MOCK_USD_USD_PRICE = "1"
-
-
-class MockPairConverter:
-    """Mock pair converter that returns fixed prices for testing."""
-
-    def __init__(
-        self,
-        btc_price: str = MOCK_BTC_USD_PRICE,
-        eth_price: str = MOCK_ETH_USD_PRICE,
-    ):
-        self._btc_price = btc_price
-        self._eth_price = eth_price
-        self._cache: Dict[Any, Any] = {}
-
-    def name(self) -> str:
-        return "MockPairConverter"
-
-    def cache_key(self) -> Optional[str]:
-        return "mock_converter"
-
-    def get_historic_bar_from_native_source(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[Any]:
-        return None
-
-    def get_conversion_rate(
-        self,
-        timestamp: Any,
-        from_asset: str,
-        to_asset: str,
-        exchange: str,
-    ) -> Optional[RP2Decimal]:
-        if from_asset == "BTC" and to_asset == "USD":
-            return RP2Decimal(self._btc_price)
-        if from_asset == "USD" and to_asset == "BTC":
-            return RP2Decimal(str(1 / float(self._btc_price)))
-        if from_asset == "ETH" and to_asset == "USD":
-            return RP2Decimal(self._eth_price)
-        if from_asset == "USD" and to_asset == "ETH":
-            return RP2Decimal(str(1 / float(self._eth_price)))
-        if from_asset == "USD" and to_asset == "USD":
-            return RP2Decimal("1")
-        if from_asset == "USDT" and to_asset == "USD":
-            return RP2Decimal("1")
-        if from_asset == "USD" and to_asset == "USDT":
-            return RP2Decimal("1")
-        return None
-
-    def optimize(self, manifest: Any) -> None:
-        pass
-
-    def save_historical_price_cache(self) -> None:
-        pass
+# Import shared fixtures from e2e_shared.py
+from e2e_shared import MockPairConverter
 
 
 def _run_full_pipeline(
