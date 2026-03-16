@@ -1156,8 +1156,10 @@ class TestCoinbaseAdvancedGainAndIncome:
                 result = plugin._process_account(account)
 
         assert result is not None
+
         assert len(result.in_transactions) >= 1
 
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+

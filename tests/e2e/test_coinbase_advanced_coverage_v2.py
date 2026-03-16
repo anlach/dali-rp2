@@ -1817,6 +1817,3 @@ class TestCoinbaseAdvancedMultipleTransactionTypes:
         # Should have multiple transactions of different types
         assert len(transactions) >= 3
 
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
