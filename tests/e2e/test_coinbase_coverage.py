@@ -28,6 +28,7 @@ from unittest.mock import MagicMock, patch, PropertyMock
 import pytest
 from rp2.plugin.country.us import US
 from rp2.rp2_decimal import RP2Decimal, ZERO
+from rp2.rp2_error import RP2RuntimeError
 
 from dali.abstract_transaction import AbstractTransaction
 from dali.configuration import Keyword
@@ -1163,3 +1164,204 @@ class TestCoinbaseAdvancedGainAndIncome:
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
 
+
+
+class TestCoinbaseProcessFillWithBuySellLookup:
+    """Tests for _process_fill with BUY and SELL types that use id_2_buy and id_2_sell lookups."""
+
+    def test_coinbase_process_fill_buy_with_buy_lookup(self):
+        """Test Coinbase plugin processes fill with BUY type and proper buy lookup."""
+        plugin = CoinbaseInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+            thread_count=1,
+        )
+
+        account = generate_mock_account("BTC", "1.0")
+
+        # Create a BUY transaction with the buy details
+        buy_transaction = {
+            "id": "tx-buy-1",
+            "type": "buy",
+            "created_at": "2023-06-01T00:00:00Z",
+            "amount": {"amount": "0.5", "currency": "BTC"},
+            "native_amount": {"amount": "17500", "currency": "USD"},
+            "buy": {
+                "id": "buy-123",
+                "unit_price": {"amount": "35000", "currency": "USD"},
+                "fee": {"amount": "5.00", "currency": "USD"},
+            },
+        }
+
+        # Provide mock buys that match the buy id
+        mock_buy = {
+            "id": "buy-123",
+            "unit_price": {"amount": "35000", "currency": "USD"},
+            "fee": {"amount": "5.00", "currency": "USD"},
+        }
+
+        with patch.object(plugin, '_InputPlugin__get_accounts', return_value=iter([account])):
+            with patch.object(plugin, '_InputPlugin__get_transactions', return_value=iter([buy_transaction])):
+                with patch.object(plugin, '_InputPlugin__get_buys', return_value=iter([mock_buy])):
+                    with patch.object(plugin, '_InputPlugin__get_sells', return_value=iter([])):
+                        result = plugin._process_account(account)
+
+        # Should create an in transaction (buy)
+        assert result is not None
+        assert len(result.in_transactions) >= 1
+        # Verify fee was extracted from buy lookup
+        assert result.in_transactions[0].fiat_fee == "5.00"
+
+    def test_coinbase_process_fill_sell_with_sell_lookup(self):
+        """Test Coinbase plugin processes fill with SELL type and proper sell lookup."""
+        plugin = CoinbaseInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+            thread_count=1,
+        )
+
+        account = generate_mock_account("BTC", "1.0")
+
+        # Create a SELL transaction with the sell details
+        sell_transaction = {
+            "id": "tx-sell-1",
+            "type": "sell",
+            "created_at": "2023-06-01T00:00:00Z",
+            "amount": {"amount": "-0.5", "currency": "BTC"},
+            "native_amount": {"amount": "-17500", "currency": "USD"},
+            "sell": {
+                "id": "sell-123",
+                "unit_price": {"amount": "35000", "currency": "USD"},
+                "fee": {"amount": "5.00", "currency": "USD"},
+            },
+        }
+
+        # Provide mock sells that match the sell id
+        mock_sell = {
+            "id": "sell-123",
+            "unit_price": {"amount": "35000", "currency": "USD"},
+            "fee": {"amount": "5.00", "currency": "USD"},
+        }
+
+        with patch.object(plugin, '_InputPlugin__get_accounts', return_value=iter([account])):
+            with patch.object(plugin, '_InputPlugin__get_transactions', return_value=iter([sell_transaction])):
+                with patch.object(plugin, '_InputPlugin__get_buys', return_value=iter([])):
+                    with patch.object(plugin, '_InputPlugin__get_sells', return_value=iter([mock_sell])):
+                        result = plugin._process_account(account)
+
+        # Should create an out transaction (sell)
+        assert result is not None
+        assert len(result.out_transactions) >= 1
+        # Verify fee was extracted from sell lookup
+        assert result.out_transactions[0].fiat_fee == "5.00"
+
+    def test_coinbase_process_fill_buy_swap_in_below_minimum_precision(self):
+        """Test Coinbase plugin handles buy swap with amount below minimum fiat precision."""
+        plugin = CoinbaseInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+            thread_count=1,
+        )
+
+        account = generate_mock_account("BTC", "1.0")
+
+        # Trade transaction with very small native amount (below 0.01)
+        trade_transaction = {
+            "id": "tx-trade-1",
+            "type": "trade",
+            "created_at": "2023-06-01T00:00:00Z",
+            "amount": {"amount": "0.00001", "currency": "BTC"},
+            "native_amount": {"amount": "0.005", "currency": "USD"},  # Below minimum 0.01
+            "trade": {"id": "trade-123"},
+        }
+
+        with patch.object(plugin, '_InputPlugin__get_accounts', return_value=iter([account])):
+            with patch.object(plugin, '_InputPlugin__get_transactions', return_value=iter([trade_transaction])):
+                with patch.object(plugin, '_InputPlugin__get_buys', return_value=iter([])):
+                    with patch.object(plugin, '_InputPlugin__get_sells', return_value=iter([])):
+                        result = plugin._process_account(account)
+
+        # Should still create in transaction but with UNKNOWN spot price and no fiat values
+        assert result is not None
+        assert len(result.in_transactions) >= 1
+        assert result.in_transactions[0].spot_price == "__unknown"
+
+    def test_coinbase_process_fill_sell_swap_out_below_minimum_precision(self):
+        """Test Coinbase plugin handles sell swap with amount below minimum fiat precision."""
+        plugin = CoinbaseInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+            thread_count=1,
+        )
+
+        account = generate_mock_account("BTC", "1.0")
+
+        # Trade sell transaction with very small native amount (below 0.01)
+        trade_transaction = {
+            "id": "tx-trade-1",
+            "type": "trade",
+            "created_at": "2023-06-01T00:00:00Z",
+            "amount": {"amount": "-0.00001", "currency": "BTC"},
+            "native_amount": {"amount": "-0.005", "currency": "USD"},  # Below minimum 0.01
+            "trade": {"id": "trade-123"},
+        }
+
+        with patch.object(plugin, '_InputPlugin__get_accounts', return_value=iter([account])):
+            with patch.object(plugin, '_InputPlugin__get_transactions', return_value=iter([trade_transaction])):
+                with patch.object(plugin, '_InputPlugin__get_buys', return_value=iter([])):
+                    with patch.object(plugin, '_InputPlugin__get_sells', return_value=iter([])):
+                        result = plugin._process_account(account)
+
+        # Should still create out transaction but with UNKNOWN spot price
+        assert result is not None
+        assert len(result.out_transactions) >= 1
+
+
+class TestCoinbaseErrorHandling:
+    """Tests for error handling in coinbase plugin."""
+
+    def test_coinbase_thread_count_exceeded(self):
+        """Test Coinbase plugin raises error when thread count exceeds maximum."""
+        with pytest.raises(RP2RuntimeError):
+            CoinbaseInputPlugin(
+                account_holder="test_user",
+                api_key="test_key",
+                api_secret="test_secret",
+                native_fiat="USD",
+                thread_count=10,  # Exceeds __MAX_THREAD_COUNT of 4
+            )
+
+    def test_coinbase_empty_account_skip(self):
+        """Test Coinbase plugin skips account without activity."""
+        plugin = CoinbaseInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+            thread_count=1,
+        )
+
+        # Account with zero balance and same created_at/updated_at
+        account = {
+            "id": "account-new",
+            "currency": {"code": "BTC"},
+            "balance": {"amount": "0.0"},
+            "created_at": "2023-01-01T00:00:00Z",
+            "updated_at": "2023-01-01T00:00:00Z",  # Same as created_at = no activity
+        }
+
+        # Mock the API methods - should not be called because account is skipped
+        with patch.object(plugin, '_InputPlugin__get_accounts', return_value=iter([account])):
+            with patch.object(plugin, '_InputPlugin__get_transactions', side_effect=Exception("Should not be called")) as mock_tx:
+                result = plugin._process_account(account)
+
+        # Account should return None (skipped)
+        assert result is None
