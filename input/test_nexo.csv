@@ -1,0 +1,4 @@
+Transaction Id,Type,Currency,Amount,USD Equivalent,Details,Outstanding Loan,DateTime
+tx001,Interest,BTC,0.05,2500,,0,2022-06-15 10:30:00
+tx002,Deposit,BTC,0.1,5000,txhash1234567890abcdef,0,2022-07-01 14:20:00
+tx003,FixedTermInterest,ETH,0.5,1000,,0,2022-08-10 09:00:00

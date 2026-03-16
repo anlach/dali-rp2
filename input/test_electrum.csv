@@ -1,0 +1,3 @@
+oc_transaction_hash,ln_payment_hash,label,confirmations,amount_chain_bc,amount_lightning_bc,fiat_value,network_fee_satoshi,fiat_fee,timestamp
+abc123def456,,test_deposit,6,0.05,,2500,5000,0,2022-06-15 10:30:00
+def456ghi789,,test_withdrawal,10,-0.03,,1500,3000,0,2022-07-01 14:20:00

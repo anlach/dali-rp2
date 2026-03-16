@@ -1,0 +1,4 @@
+Operation Date,Dummy,Currency,Operation Type,Operation Amount,Operation Fees,Operation Hash
+2022-06-15T10:30:00.000Z,X,BTC,IN,0.05,0.0001,tx123abc
+2022-07-01T14:20:00.000Z,X,ETH,OUT,0.5,0.001,tx456def
+2022-08-10T09:00:00.000Z,X,FTM,IN,100,0.5,tx789ghi
