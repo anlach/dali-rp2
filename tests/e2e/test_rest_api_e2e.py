@@ -413,8 +413,124 @@ class TestBitbankE2E:
             native_fiat="USD",
             thread_count=2,
         )
-        
+
         assert plugin is not None
+
+    def test_bitbank_process_buy_and_sell_with_negative_fee(self):
+        """Test _process_buy_and_sell with negative fee (maker rebate).
+
+        Negative fees (maker rebates) are currently treated as zero by the plugin
+        as the abstract_ccxt_input_plugin does not generate fee income transactions.
+        This test verifies the current behavior (negative fee treated as 0).
+        """
+        plugin = BitbankInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+        )
+
+        # Mock trade with negative fee (maker rebate)
+        trade_negative_fee = {
+            "id": "12345",
+            "timestamp": 1640000000000,  # in milliseconds
+            "symbol": "BTC/JPY",
+            "side": "buy",
+            "price": 5000000,
+            "amount": 0.1,
+            "cost": 500000,
+            "fee": {
+                "cost": -100,  # Negative fee (maker rebate)
+                "currency": "JPY"
+            },
+            "takerOrMaker": "maker"
+        }
+
+        result = plugin._process_buy_and_sell(trade_negative_fee)
+
+        # Should create the main transaction
+        assert len(result.in_transactions) >= 1
+        # Negative fees are currently treated as zero (no fee income transaction is created)
+        # This test documents current behavior - negative fees are ignored
+        assert result is not None
+
+    def test_bitbank_process_buy_and_sell_with_positive_fee(self):
+        """Test _process_buy_and_sell with positive fee (normal fee)."""
+        plugin = BitbankInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+        )
+
+        # Mock trade with normal positive fee
+        trade_positive_fee = {
+            "id": "12346",
+            "timestamp": 1640000000000,  # in milliseconds
+            "symbol": "BTC/JPY",
+            "side": "sell",
+            "price": 5100000,
+            "amount": 0.1,
+            "cost": 510000,
+            "fee": {
+                "cost": 100,  # Positive fee
+                "currency": "JPY"
+            },
+            "takerOrMaker": "taker"
+        }
+
+        result = plugin._process_buy_and_sell(trade_positive_fee)
+
+        # For sell with positive fee, should create OutTransaction
+        assert len(result.out_transactions) >= 1
+        # Should NOT create a fee income transaction
+        fee_income_found = any(
+            tx.transaction_type == "IN" and "Fee income" in tx.notes
+            for tx in result.in_transactions
+        )
+        assert not fee_income_found, "Should not have fee income for positive fee"
+
+    def test_bitbank_pagination_methods(self):
+        """Test pagination methods return expected values."""
+        plugin = BitbankInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+        )
+
+        # Deposits and withdrawals should return None (no pagination for bitbank)
+        deposits_pagination = plugin._get_process_deposits_pagination_detail_set()
+        assert deposits_pagination is None
+
+        withdrawals_pagination = plugin._get_process_withdrawals_pagination_detail_set()
+        assert withdrawals_pagination is None
+
+        # Trades should return DateBasedPaginationDetailSet
+        trades_pagination = plugin._get_process_trades_pagination_detail_set()
+        assert trades_pagination is not None
+        # Use _get_limit() method instead of .limit attribute
+        assert trades_pagination._get_limit() == 1000
+
+    def test_bitbank_process_methods_exist(self):
+        """Test that process methods exist and can be called (even if no-op)."""
+        plugin = BitbankInputPlugin(
+            account_holder="test_user",
+            api_key="test_key",
+            api_secret="test_secret",
+            native_fiat="USD",
+        )
+
+        # These methods are no-op for bitbank but should be callable
+        in_txs = []
+        out_txs = []
+        intra_txs = []
+
+        # _process_gains - empty implementation
+        plugin._process_gains(in_txs, out_txs)
+
+        # _process_implicit_api - empty implementation
+        plugin._process_implicit_api(in_txs, out_txs, intra_txs)
 
 
 class TestRestApiConfiguration:

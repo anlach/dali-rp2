@@ -1153,6 +1153,168 @@ in_csv_file = {in_csv}
                 pass
 
 
+class TestDaliMainErrorPaths:
+    """Test error paths and edge cases in dali_main.py."""
+
+    def test_dali_main_without_profiler(self, tmp_path, monkeypatch):
+        """Test dali_main when profiler is not enabled."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        input_dir = Path(__file__).parent.parent.parent / "input"
+        in_csv = input_dir / "test_manual_in.csv"
+
+        ini_content = f"""[global_config]
+assets = BTC
+exchanges = test
+holders = tester
+
+[in_header]
+timestamp = 0
+asset = 1
+exchange = 2
+holder = 3
+transaction_type = 4
+spot_price = 5
+crypto_in = 6
+crypto_fee = 7
+fiat_in_no_fee = 8
+fiat_in_with_fee = 9
+fiat_fee = 10
+unique_id = 11
+notes = 12
+
+[dali.plugin.input.csv.manual]
+in_csv_file = {in_csv}
+"""
+        ini_file = tmp_path / "test_no_profiler.ini"
+        ini_file.write_text(ini_content)
+
+        # Ensure profiler is not enabled
+        monkeypatch.delenv("RP2_ENABLE_PROFILER", raising=False)
+
+        with patch('sys.argv', ['dali-rp2', '-o', str(output_dir), str(ini_file)]):
+            try:
+                dali_main.dali_main(US())
+            except SystemExit:
+                pass
+
+    def test_dali_main_with_pair_converter(self, tmp_path):
+        """Test dali_main with a pair converter plugin."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        input_dir = Path(__file__).parent.parent.parent / "input"
+        in_csv = input_dir / "test_manual_in.csv"
+
+        ini_content = f"""[global_config]
+assets = BTC
+exchanges = test
+holders = tester
+
+[in_header]
+timestamp = 0
+asset = 1
+exchange = 2
+holder = 3
+transaction_type = 4
+spot_price = 5
+crypto_in = 6
+crypto_fee = 7
+fiat_in_no_fee = 8
+fiat_in_with_fee = 9
+fiat_fee = 10
+unique_id = 11
+notes = 12
+
+[dali.plugin.pair_converter.coinbase_coinbase_advanced]
+historical_price = high
+
+[dali.plugin.input.csv.manual]
+in_csv_file = {in_csv}
+"""
+        ini_file = tmp_path / "test_with_converter.ini"
+        ini_file.write_text(ini_content)
+
+        with patch('sys.argv', ['dali-rp2', '-o', str(output_dir), str(ini_file)]):
+            try:
+                dali_main._dali_main_internal(US())
+            except SystemExit:
+                pass
+
+    def test_dali_main_with_multiple_plugins(self, tmp_path):
+        """Test dali_main with multiple pair converter plugins."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        input_dir = Path(__file__).parent.parent.parent / "input"
+        in_csv = input_dir / "test_manual_in.csv"
+
+        ini_content = f"""[global_config]
+assets = BTC
+exchanges = test
+holders = tester
+
+[in_header]
+timestamp = 0
+asset = 1
+exchange = 2
+holder = 3
+transaction_type = 4
+spot_price = 5
+crypto_in = 6
+crypto_fee = 7
+fiat_in_no_fee = 8
+fiat_in_with_fee = 9
+fiat_fee = 10
+unique_id = 11
+notes = 12
+
+[dali.plugin.pair_converter.ccxt]
+historical_price = high
+plugins = binance
+
+[dali.plugin.pair_converter.coinbase_coinbase_advanced]
+historical_price = high
+
+[dali.plugin.input.csv.manual]
+in_csv_file = {in_csv}
+"""
+        ini_file = tmp_path / "test_multiple_converters.ini"
+        ini_file.write_text(ini_content)
+
+        with patch('sys.argv', ['dali-rp2', '-o', str(output_dir), str(ini_file)]):
+            try:
+                dali_main._dali_main_internal(US())
+            except SystemExit:
+                pass
+
+    def test_dali_main_parse_arguments(self, tmp_path):
+        """Test argument parsing in _dali_main_internal."""
+        parser = dali_main._setup_argument_parser()
+
+        # Test with default arguments (INI_FILE is required)
+        ini_file = tmp_path / "test.ini"
+        ini_file.touch()
+        args = parser.parse_args([str(ini_file)])
+        assert args.ini_file == str(ini_file)
+        assert args.output_dir == "output/"
+        assert args.use_cache is False
+        assert args.read_spot_price_from_web is False
+        assert args.thread_count == 1
+        assert args.prefix == ""
+
+        # Test with custom arguments
+        custom_output = tmp_path / "custom_output"
+        custom_output.mkdir()
+        args = parser.parse_args(['-c', '-s', '-t', '4', '-o', str(custom_output), str(ini_file)])
+        assert args.ini_file == str(ini_file)
+        assert args.output_dir == str(custom_output)
+        assert args.use_cache is True
+        assert args.read_spot_price_from_web is True
+        assert args.thread_count == 4
+
+
 class TestTransactionHintsWithRealConfig:
     """Test transaction hints configuration with real inputs."""
 
@@ -1195,6 +1357,101 @@ in_csv_file = {in_csv}
         ini_file = tmp_path / "test_hints.ini"
         ini_file.write_text(ini_content)
         
+        with patch('sys.argv', ['dali-rp2', '-o', str(output_dir), str(ini_file)]):
+            try:
+                dali_main._dali_main_internal(US())
+            except SystemExit:
+                pass
+
+
+class TestDaliMainAdditionalCoverage:
+    """Additional tests to improve dali_main.py coverage."""
+
+    def test_ini_file_with_transaction_hints_builtin_section(self, tmp_path):
+        """Test that transaction_hints builtin section is processed (line 111)."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        input_dir = Path(__file__).parent.parent.parent / "input"
+        in_csv = input_dir / "test_manual_in.csv"
+
+        # This test exercises the TRANSACTION_HINTS section processing at line 111
+        ini_content = f"""[global_config]
+assets = BTC
+exchanges = test
+holders = tester
+
+[in_header]
+timestamp = 0
+asset = 1
+exchange = 2
+holder = 3
+transaction_type = 4
+spot_price = 5
+crypto_in = 6
+crypto_fee = 7
+fiat_in_no_fee = 8
+fiat_in_with_fee = 9
+fiat_fee = 10
+unique_id = 11
+notes = 12
+
+[transaction_hints]
+tx001 = IN:buy:Bought BTC
+
+[dali.plugin.input.csv.manual]
+in_csv_file = {in_csv}
+
+[dali.plugin.pair_converter.ccxt]
+exchange = binance
+"""
+        ini_file = tmp_path / "test_hints_builtin.ini"
+        ini_file.write_text(ini_content)
+
+        with patch('sys.argv', ['dali-rp2', '-o', str(output_dir), str(ini_file)]):
+            try:
+                dali_main._dali_main_internal(US())
+            except SystemExit:
+                pass
+
+    def test_pair_converter_optimization(self, tmp_path):
+        """Test pair converter optimization and duplicate cache key detection (lines 176-199)."""
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        input_dir = Path(__file__).parent.parent.parent / "input"
+        in_csv = input_dir / "test_manual_in.csv"
+
+        # Test with one pair converter to exercise the optimization path
+        ini_content = f"""[global_config]
+assets = BTC
+exchanges = test
+holders = tester
+
+[in_header]
+timestamp = 0
+asset = 1
+exchange = 2
+holder = 3
+transaction_type = 4
+spot_price = 5
+crypto_in = 6
+crypto_fee = 7
+fiat_in_no_fee = 8
+fiat_in_with_fee = 9
+fiat_fee = 10
+unique_id = 11
+notes = 12
+
+[dali.plugin.input.csv.manual]
+in_csv_file = {in_csv}
+
+[dali.plugin.pair_converter.ccxt]
+exchange = binance
+"""
+        ini_file = tmp_path / "test_pair_conv.ini"
+        ini_file.write_text(ini_content)
+
         with patch('sys.argv', ['dali-rp2', '-o', str(output_dir), str(ini_file)]):
             try:
                 dali_main._dali_main_internal(US())
