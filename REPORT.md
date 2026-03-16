@@ -1,55 +1,91 @@
-# E2E Test Coverage Progress Report
+# Kraken Coverage Improvement Report
 
-## Current Status
-- **Current Coverage**: 69.46%
-- **Target Coverage**: 98%
-- **Gap**: ~28.54%
+## Summary
+Improved Kraken REST plugin (kraken.py) coverage from **52.20% to 97.07%**.
 
-## Coverage by Priority Files
-
-| File | Current | Target | Gap | Notes |
-|------|---------|--------|-----|-------|
-| dali_main.py | 78.77% | 98% | ~19% | Added tests for exception handling, ThreadPool, missing ini file |
-| abstract_input_plugin.py | 75.47% | 98% | ~23% | Added tests for cache operations, is_native_fiat |
-| kraken.py | 52.20% | 98% | ~46% | REST plugin, needs more API mocking tests |
-| transaction_resolver.py | 68.31% | 98% | ~30% | Core transaction resolution logic |
-| abstract_ccxt_input_plugin.py | 88.00% | 98% | ~10% | CCXT abstract plugin |
-| coinbase.py | 63.94% | 98% | ~34% | REST plugin |
-| coinbase_advanced.py | 60.94% | 98% | ~37% | REST plugin |
+## Initial Coverage Status
+- Overall: 79.04%
+- kraken.py: 52.20% (high priority)
+- coinbase.py: 63.94%
+- coinbase_advanced.py: 60.94%
+- transaction_resolver.py: 68.31%
 
 ## Changes Made
 
-### Commit b4052ab - Targeted E2E tests for dali_main.py
-Added new test classes:
-- `TestDaliMainExceptionHandling`: Tests for exception handling during plugin loading, ODS force_repricing, ThreadPool with thread_count > 1
-- `TestDaliMainMissingIniFileCoverage`: Tests for missing ini file exit path
+### New Test File
+Created `tests/e2e/test_kraken_coverage_e2e.py` with 36 comprehensive E2E tests covering:
 
-**Result**: dali_main.py improved from 77.54% to 78.77% (+1.23%)
+1. **TestKrakenInitializeMarkets** (4 tests)
+   - Successful market initialization
+   - BSV market addition
+   - Error handling for non-list markets
+   - Error handling for base mismatch
 
-### Commit 7ec0a61 - Comprehensive REST API E2E tests
-Added `test_rest_api_full_e2e.py` with comprehensive tests for REST API plugins
+2. **TestKrakenGatherApiData** (3 tests)
+   - With cached data
+   - Without cache
+   - Pagination (placeholder - indirect coverage)
 
-## Remaining Gaps
+3. **TestKrakenLoad** (2 tests)
+   - With pre-initialized markets
+   - Initializes markets if needed
 
-### High Priority (easiest to fix)
-1. **abstract_input_plugin.py** (52.83%) - Tests for cache operations
-2. **kraken.py** (52.20%) - More Kraken API tests
-3. **coinbase_advanced.py** (60.94%) - Coinbase Advanced API tests
-4. **coinbase.py** (63.94%) - Coinbase API tests
+4. **TestKrakenComputeTransactionSet** (16 tests)
+   - Deposit → IntraTransaction
+   - Withdrawal → IntraTransaction
+   - Trade (buy) → InTransaction
+   - Trade (sell) → OutTransaction
+   - Multiple quotes error handling
+   - Margin → OutTransaction
+   - Rollover → OutTransaction
+   - Transfer → InTransaction
+   - Earn → InTransaction (Staking)
+   - Legacy Staking → InTransaction
+   - Reward → InTransaction (Staking)
+   - Receive → InTransaction (Buy)
+   - Spend (crypto) → OutTransaction
+   - Spend (fiat) → OutTransaction with fiat_out
+   - Conversion → InTransaction (Buy)
+   - Fiat trade ignored
+   - Settled type ignored
+   - Unsupported type logged
 
-### Medium Priority
-1. **transaction_resolver.py** (68.31%) - Core resolution logic
-2. **abstract_ccxt_pair_converter_plugin.py** (37.86%) - Large file with complex logic
-3. **binance_com.py** (36.33%) - REST plugin
+5. **TestKrakenEdgeCases** (4 tests)
+   - Staking assets with .S/.M suffixes
+   - .F suffix handling
+   - Fiat asset detection
+   - Unknown type error logging
 
-## Next Steps
-1. Add more tests for abstract_input_plugin.py cache methods
-2. Add more tests for REST API plugins (coinbase, coinbase_advanced, kraken)
-3. Add tests for transaction_resolver.py resolution paths
-4. Consider adding tests that exercise the exception handlers in dali_main.py
+6. **TestKrakenLoadWithEndDate** (2 tests)
+   - Filters transactions after end_date
+   - Includes transactions before end_date
+
+7. **TestKrakenFilterByEndDate** (1 test)
+   - Valid timestamp handling
+
+8. **TestKrakenProcessTradeHistoryAndLedger** (2 tests)
+   - Trade history processing
+   - Ledger processing
+
+## Final Coverage
+- **kraken.py**: 97.07% (up from 52.20%)
+- Missing lines: 132, 194, 198, 241, 267-270 (mostly property methods and minor branches)
+
+## Key Testing Patterns Used
+- Mocking CCXT kraken client
+- Mocking cache load/save functions
+- Testing various ledger transaction types (deposit, withdrawal, trade, margin, rollover, transfer, earn, staking, reward, receive, spend, conversion)
+- End date filtering
+- Market initialization edge cases
+
+## Files Changed
+- Added: `tests/e2e/test_kraken_coverage_e2e.py` (new, 36 tests)
 
 ## Test Execution
 ```bash
-cd /home/linuxuser/.openclaw/workspace/rp2-work/dali-rp2
-python3 -m pytest tests/e2e/ --cov=dali --cov-config=.coveragerc --cov-report=term
+# Run new Kraken tests
+pytest tests/e2e/test_kraken_coverage_e2e.py -v
+
+# Run combined with existing tests
+pytest tests/e2e/test_kraken_coverage_e2e.py tests/e2e/test_binance_kraken_e2e.py --cov=dali.plugin.input.rest.kraken
 ```
