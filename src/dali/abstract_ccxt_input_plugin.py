@@ -19,6 +19,7 @@
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from multiprocessing.pool import ThreadPool
 from time import sleep
@@ -163,6 +164,17 @@ class AbstractCcxtInputPlugin(AbstractInputPlugin):
             base_info=f"{base_amount} {assets[0]}",
             quote_info=f"{quote_amount} {assets[1]}",
         )
+
+    def _get_api_url_override(self, exchange_name: str) -> Optional[str]:
+        """
+        Get API URL override from environment variable for E2E testing.
+        
+        Looks for environment variable: DALI_<EXCHANGE>_API_URL
+        e.g., DALI_BINANCE_API_URL, DALI_COINBASE_API_URL, DALI_KRAKEN_API_URL
+        
+        This allows tests to redirect API calls to a local mock HTTP server.
+        """
+        return super()._get_api_url_override(exchange_name)
 
     @property
     def _client(self) -> Exchange:
