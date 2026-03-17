@@ -937,4 +937,121 @@ class TestProcessOperationResult:
             intra_transactions=[],
         )
 
+
+# =============================================================================
+# File-Based Input Tests
+# =============================================================================
+
+class TestFileBasedInputs:
+    """Test cases that use file-based (JSON) inputs instead of Python dictionaries."""
+
+    def test_process_deposit_from_json_file(self):
+        """Test _process_transfer with deposit data loaded from JSON file."""
+        # Load mock deposit data from JSON file
+        with open("tests/e2e/input_mock/mock_deposit.json", "r") as f:
+            deposit_data = json.load(f)
+
+        plugin = ConcreteCcxtInputPlugin(
+            account_holder=_MOCK_ACCOUNT_HOLDER,
+            native_fiat="USD",
+        )
+
+        result = plugin._process_transfer(deposit_data)
+
+        # Verify transaction was created from file-based input
+        assert len(result.intra_transactions) == 1
+        intra_tx = result.intra_transactions[0]
+        assert intra_tx.asset == "PAXG"
+        assert intra_tx.crypto_received == "0.009998"
+
+    def test_process_buy_from_json_file(self):
+        """Test _process_buy with trade data loaded from JSON file."""
+        # Load mock trade data from JSON file
+        with open("tests/e2e/input_mock/mock_trade_buy.json", "r") as f:
+            trade_data = json.load(f)
+
+        plugin = ConcreteCcxtInputPlugin(
+            account_holder=_MOCK_ACCOUNT_HOLDER,
+            native_fiat="USD",
+        )
+
+        result = plugin._process_buy(trade_data)
+
+        # Verify transaction was created from file-based input
         assert len(result.in_transactions) == 1
+        in_tx = result.in_transactions[0]
+        assert in_tx.transaction_type == "Buy"
+        assert in_tx.asset == "BTC"
+
+    def test_load_ini_configuration(self):
+        """Test loading configuration from INI file."""
+        import configparser
+
+        config = configparser.ConfigParser()
+        config.read("tests/e2e/input_mock/test_e2e_config.ini")
+
+        # Verify INI file was parsed correctly
+        assert config.has_section("general")
+        assert config.get("general", "native_fiat") == "USD"
+        assert config.get("general", "thread_count") == "4"
+
+        assert config.has_section("binance")
+        assert config.get("binance", "account_holder") == "test_user"
+
+    def test_process_withdrawal_from_json_file(self):
+        """Test _process_transfer with withdrawal data loaded from JSON file."""
+        # Load mock withdrawal data from JSON file
+        with open("tests/e2e/input_mock/mock_withdrawal.json", "r") as f:
+            withdrawal_data = json.load(f)
+
+        plugin = ConcreteCcxtInputPlugin(
+            account_holder=_MOCK_ACCOUNT_HOLDER,
+            native_fiat="USD",
+        )
+
+        result = plugin._process_transfer(withdrawal_data)
+
+        # Verify transaction was created from file-based input
+        # Withdrawals create IntraTransactions (not OutTransactions)
+        assert len(result.intra_transactions) == 1
+        intra_tx = result.intra_transactions[0]
+        assert intra_tx.asset == "PAXG"
+        assert intra_tx.crypto_sent == "0.005"
+
+    def test_process_sell_from_json_file(self):
+        """Test _process_sell with trade data loaded from JSON file."""
+        # Load mock sell trade data from JSON file
+        with open("tests/e2e/input_mock/mock_trade_sell.json", "r") as f:
+            trade_data = json.load(f)
+
+        plugin = ConcreteCcxtInputPlugin(
+            account_holder=_MOCK_ACCOUNT_HOLDER,
+            native_fiat="USD",
+        )
+
+        result = plugin._process_sell(trade_data)
+
+        # Verify transaction was created from file-based input
+        assert len(result.out_transactions) == 1
+        out_tx = result.out_transactions[0]
+        assert out_tx.transaction_type == "Sell"
+        assert out_tx.asset == "ETH"
+
+    def test_process_conversion_trade_from_json_file(self):
+        """Test processing a conversion trade (BTC/ETH) from JSON file."""
+        # Load mock conversion trade data from JSON file
+        with open("tests/e2e/input_mock/mock_trade_conversion.json", "r") as f:
+            trade_data = json.load(f)
+
+        plugin = ConcreteCcxtInputPlugin(
+            account_holder=_MOCK_ACCOUNT_HOLDER,
+            native_fiat="USD",
+        )
+
+        result = plugin._process_buy(trade_data)
+
+        # Verify transaction was created from file-based input
+        # For BTC/ETH, a buy means buying BTC (base asset)
+        assert len(result.in_transactions) >= 1
+        in_tx = result.in_transactions[0]
+        assert in_tx.asset == "BTC"
