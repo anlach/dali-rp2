@@ -246,13 +246,16 @@ class TestYoroiCsv:
         result = plugin.load(US())
 
         # LP removal should create OutTransaction (sell LP) + InTransaction (buy ADA)
+        # After fix: asset should be "LP-ADA-SNEK" not just "LP"
         lp_removal_out = next(
             (t for t in result
              if isinstance(t, OutTransaction)
-             and t.asset == "LP"),
+             and t.asset and t.asset.startswith("LP-")),
             None
         )
-        assert lp_removal_out is not None, "Should have LP removal OutTransaction"
+        assert lp_removal_out is not None, "Should have LP removal OutTransaction with pool-specific name"
+        # Verify it includes the pool name
+        assert "SNEK" in lp_removal_out.asset, f"LP asset should include pool name, got: {lp_removal_out.asset}"
 
         lp_removal_in = next(
             (t for t in result
@@ -264,3 +267,89 @@ class TestYoroiCsv:
             None
         )
         assert lp_removal_in is not None, "Should have LP removal InTransaction with gain/loss notes"
+
+    def test_lp_pool_name_detection(self) -> None:
+        """Test that LP removal correctly identifies the pool (not 'unknown').
+
+        This verifies the fix for Issue 2: pool name detection was failing
+        for Zap Out because it looked for pool in received assets (which only
+        has ADA), not from the cost basis lookup.
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the LP removal OutTransaction
+        lp_removal_out = next(
+            (t for t in result
+             if isinstance(t, OutTransaction)
+             and t.asset and t.asset.startswith("LP-")),
+            None
+        )
+
+        assert lp_removal_out is not None, "Should have LP removal OutTransaction"
+        # Pool name should NOT be "unknown" - it should be detected from cost basis
+        assert "unknown" not in lp_removal_out.notes.lower(), (
+            f"Pool should not be unknown, got notes: {lp_removal_out.notes}"
+        )
+        # Should contain the specific pool name
+        assert "SNEK" in lp_removal_out.notes or "WMTX" in lp_removal_out.notes, (
+            f"Notes should contain specific pool name, got: {lp_removal_out.notes}"
+        )
+
+    def test_lp_cost_basis_lookup(self) -> None:
+        """Test that LP cost basis is correctly looked up from deposit.
+
+        This verifies the fix for Issue 3: the cost basis key mismatch.
+        Deposit stores key as "ADA-SNEK_10000", but lookup was trying
+        "ADA-ADA_10000" (looking for pool in received assets, which only has ADA).
+
+        Expected: gain/loss should be calculated correctly using the deposit's cost basis.
+        Deposit: 100 ADA + 5000 SNEK -> 10000 LP
+        Removal: 10000 LP -> 50.5 ADA (minus 0.75 fee = 49.75 net)
+        Gain/Loss: 49.75 - 100 = -50.25 (a loss)
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the LP removal InTransaction (the ADA received)
+        lp_removal_in = next(
+            (t for t in result
+             if isinstance(t, InTransaction)
+             and t.asset == "ADA"
+             and hasattr(t, 'notes')
+             and t.notes
+             and 'LP Removal' in t.notes),
+            None
+        )
+
+        assert lp_removal_in is not None, "Should have LP removal InTransaction"
+
+        # Extract gain/loss from notes: "Gain/Loss: -50.25 ADA"
+        import re
+        match = re.search(r"Gain/Loss:\s*([-\d.]+)\s*ADA", lp_removal_in.notes)
+        assert match is not None, f"Should have gain/loss in notes: {lp_removal_in.notes}"
+
+        gain_loss = float(match.group(1))
+
+        # Expected: (50.5 - 0.75) - 100 = -50.25
+        # Before fix: cost basis was 0, so gain would be ~49.75
+        assert -51 < gain_loss < -49, (
+            f"Gain/loss should be ~-50.25 (loss from 100 ADA cost basis), "
+            f"got {gain_loss}. This indicates cost basis lookup failed."
+        )

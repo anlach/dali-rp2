@@ -382,26 +382,38 @@ def _create_zap_out_transactions(
 
     total_fee = execution_fee + on_chain_fee
 
-    # Look up cost basis for this LP amount - must match the key format from deposit (pool + amount)
-    # We need to determine the pool from the assets being received (the non-LP asset)
-    pool_name = "unknown"
-    for asset in receive.assets:
-        if asset.currency != "LP":
-            pool_name = f"ADA-{asset.currency}"
+    # Look up cost basis for this LP amount
+    # First, try to find by matching LP token amount (most reliable)
+    cost_basis = {"ada_cost": 0.0, "token_cost": 0.0, "token_currency": "UNKNOWN", "pool": "unknown"}
+    lp_amount = int(lp_token.amount)
+
+    for key, cb in _LP_COST_BASES.items():
+        # Key format is poolname_amount, extract amount
+        key_amount = int(key.split('_')[-1])
+        if key_amount == lp_amount:
+            cost_basis = cb
             break
 
-    lp_key = f"{pool_name}_{int(lp_token.amount)}"
-    cost_basis = _LP_COST_BASES.get(lp_key, {"ada_cost": 0.0, "token_cost": 0.0, "token_currency": "UNKNOWN", "pool": "unknown"})
+    # If not found by amount, try the old method (pool from received assets)
+    if cost_basis.get("pool") == "unknown":
+        pool_name = "unknown"
+        for asset in receive.assets:
+            if asset.currency != "LP":
+                pool_name = f"ADA-{asset.currency}"
+                break
+        lp_key = f"{pool_name}_{lp_amount}"
+        cost_basis = _LP_COST_BASES.get(lp_key, cost_basis)
 
     # Calculate gain/loss
     net_proceeds = ada_received.amount - total_fee
     cost_basis_ada = cost_basis.get("ada_cost", 0.0)
     gain_loss = net_proceeds - cost_basis_ada
 
-    # Determine pool name
+    # Determine pool name (e.g., ADA-MIN, ADA-SNEK)
     pool_name = cost_basis.get("pool", "unknown")
+    lp_asset_name = f"LP-{pool_name}"  # Specific LP token name like LP-ADA-MIN
 
-    raw_data = f"Zap Out: {lp_token.amount} LP -> {ada_received.amount} ADA"
+    raw_data = f"Zap Out: {lp_token.amount} {lp_asset_name} -> {ada_received.amount} ADA"
     notes = f"Minswap LP Removal from {pool_name} pool - Gain/Loss: {gain_loss:.2f} ADA"
 
     # OutTransaction: Remove/sell LP tokens
@@ -411,7 +423,7 @@ def _create_zap_out_transactions(
             unique_id=f"{created_tx[:16]}_lp_remove_out",
             raw_data=raw_data,
             timestamp=timestamp,
-            asset="LP",
+            asset=lp_asset_name,
             exchange=account_nickname,
             holder=account_holder,
             transaction_type=Keyword.SELL.value,
