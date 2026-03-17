@@ -1,0 +1,15 @@
+[
+  {
+    "id": "withdraw_001",
+    "amount": "0.1",
+    "coin": "BTC",
+    "network": "BTC",
+    "status": "1",
+    "address": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    "txId": "withdraw123",
+    "applyTime": "1706121600000",
+    "transferType": "0",
+    "confirmTimes": "3/3",
+    "fee": "0.0001"
+  }
+]

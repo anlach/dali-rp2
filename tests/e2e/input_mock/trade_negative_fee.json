@@ -1,0 +1,14 @@
+{
+  "id": "12345",
+  "timestamp": 1640000000000,
+  "symbol": "BTC/JPY",
+  "side": "buy",
+  "price": 5000000,
+  "amount": 0.1,
+  "cost": 500000,
+  "fee": {
+    "cost": -100,
+    "currency": "JPY"
+  },
+  "takerOrMaker": "maker"
+}

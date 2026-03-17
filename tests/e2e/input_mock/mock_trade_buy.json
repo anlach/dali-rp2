@@ -1,0 +1,19 @@
+{
+  "id": "trade-buy-123",
+  "timestamp": 1599621997000,
+  "datetime": "2020-09-09T03:26:37.000Z",
+  "symbol": "BTC/USD",
+  "order": "order-123",
+  "type": "limit",
+  "side": "buy",
+  "takerOrMaker": "taker",
+  "price": 35000.0,
+  "amount": 0.1,
+  "cost": 3500.0,
+  "fee": {
+    "cost": 0.001,
+    "currency": "BTC",
+    "rate": 0.002
+  },
+  "info": {}
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "id": "deposit_001",
+    "amount": "0.5",
+    "coin": "BTC",
+    "network": "BTC",
+    "status": "1",
+    "address": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
+    "txId": "abc123def456",
+    "insertTime": "1704067200000",
+    "transferType": "0",
+    "confirmTimes": "3/3"
+  },
+  {
+    "id": "deposit_002",
+    "amount": "10.0",
+    "coin": "ETH",
+    "network": "ETH",
+    "status": "1",
+    "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f0eB1E",
+    "txId": "xyz789ghi012",
+    "insertTime": "1705344000000",
+    "transferType": "0",
+    "confirmTimes": "12/12"
+  }
+]

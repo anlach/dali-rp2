@@ -1,0 +1,19 @@
+{
+  "id": "trade-conversion-123",
+  "timestamp": 1599621999000,
+  "datetime": "2020-09-09T03:26:39.000Z",
+  "symbol": "BTC/ETH",
+  "order": "order-125",
+  "type": "limit",
+  "side": "buy",
+  "takerOrMaker": "taker",
+  "price": 15.0,
+  "amount": 1.0,
+  "cost": 15.0,
+  "fee": {
+    "cost": 0.0001,
+    "currency": "ETH",
+    "rate": 0.001
+  },
+  "info": {}
+}

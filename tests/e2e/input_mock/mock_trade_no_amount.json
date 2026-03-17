@@ -1,0 +1,19 @@
+{
+  "id": "trade-no-amount-123",
+  "timestamp": 1599622001000,
+  "datetime": "2020-09-09T03:26:41.000Z",
+  "symbol": "BTC/USD",
+  "order": "order-127",
+  "type": "limit",
+  "side": "buy",
+  "takerOrMaker": "taker",
+  "price": 35000.0,
+  "amount": null,
+  "cost": 3500.0,
+  "fee": {
+    "cost": 0.001,
+    "currency": "BTC",
+    "rate": 0.002
+  },
+  "info": {}
+}
