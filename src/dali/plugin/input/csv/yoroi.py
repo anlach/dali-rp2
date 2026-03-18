@@ -162,6 +162,7 @@ def _load_minswap_csv(filepath: str) -> List[Dict]:
                 "execution_fees": row[8],
                 "executed_tx": row[9],
                 "executed_at": row[10],
+                "raw_data": ",".join(row),  # Store full row as raw_data
             }
             results.append(row_dict)
 
@@ -389,7 +390,9 @@ def _create_lp_deposit_transactions(
     # IN transaction for LP tokens received
     # Cost basis = value of assets deposited (stored for later use)
     raw_data_lp = f"LP Deposit: {ada_amount} ADA + {token_amount} {token_currency} -> {lp_token.amount} LP"
-    notes_lp = f"Minswap LP Deposit to {lp_pair} pool - received LP tokens | Cost basis: {ada_amount} ADA + {token_amount} {token_currency}"
+    # Include derivation info: double the ADA contribution for spot price calculation
+    derive_info = f"DERIVE:ADA:{ada_amount * 2}"
+    notes_lp = f"Minswap LP Deposit to {lp_pair} pool - received LP tokens | Cost basis: {ada_amount} ADA + {token_amount} {token_currency} | {derive_info}"
     result.append(
         InTransaction(
             plugin=plugin_name,
@@ -404,6 +407,58 @@ def _create_lp_deposit_transactions(
             crypto_in=str(lp_token.amount),
             crypto_fee="0",
             notes=notes_lp,
+        )
+    )
+
+    # Create two balancing Intra transactions to replace/complement the Yoroi entries
+    # Get execution fee and executed tx from minswap
+    execution_fee = _extract_execution_fee(minswap_tx["execution_fees"])
+    executed_tx = minswap_tx["executed_tx"]
+
+    # Build raw_data from minswap row
+    raw_data_minswap = minswap_tx.get("raw_data", "")
+
+    # Total ADA sent = paid ADA + deposit return (2.0) + execution fee
+    # Note: ada_amount is already normalized from Lovelace
+    total_ada_sent = ada_amount + 2.0 + execution_fee
+
+    # Balancing Intra 1: The deposit return (from Yoroi "receive" row)
+    # Direction: andrew_wallet -> __unknown (sending 2 ADA deposit back)
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=executed_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=account_nickname,
+            from_holder=account_holder,
+            to_exchange=Keyword.UNKNOWN.value,
+            to_holder=Keyword.UNKNOWN.value,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=str(2.0),
+            crypto_received=Keyword.UNKNOWN.value,
+            notes="Minswap LP Deposit - deposit return",
+        )
+    )
+
+    # Balancing Intra 2: The ADA sent to the pool (from Yoroi "send" row)
+    # Direction: __unknown -> andrew_wallet (receiving the ADA back from the pool operation)
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=created_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=Keyword.UNKNOWN.value,
+            from_holder=Keyword.UNKNOWN.value,
+            to_exchange=account_nickname,
+            to_holder=account_holder,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=Keyword.UNKNOWN.value,
+            crypto_received=str(total_ada_sent),
+            notes="Minswap LP Deposit - ADA sent to pool",
         )
     )
 

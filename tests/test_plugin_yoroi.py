@@ -606,3 +606,125 @@ class TestYoroiCsv:
 
         assert out_count == 3, f"Expected 3 OUT transactions (2 for deposit, 1 for zap out), got {out_count}"
         assert in_count == 2, f"Expected 2 IN transactions (LP in, ADA in), got {in_count}"
+
+    def test_lp_deposit_creates_two_balancing_intra_transactions(self) -> None:
+        """Test that LP deposit creates two balancing IntraTransactions.
+
+        These intra transactions balance the Yoroi Withdrawal and Deposit entries
+        and properly handle the 2 ADA deposit return + fees.
+
+        For each LP deposit, we should have:
+        1. Intra: andrew_wallet -> __unknown, 2.0 ADA (deposit return)
+        2. Intra: __unknown -> andrew_wallet, 100 + 2 + 0.75 = 102.75 ADA (ADA sent to pool)
+
+        The unique IDs should be:
+        - executed_tx for the deposit return
+        - created_tx for the ADA sent to pool
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the balancing intra transactions for LP deposits
+        # These have notes containing "deposit return" or "ADA sent to pool"
+        deposit_return_intras = [
+            t for t in result
+            if isinstance(t, IntraTransaction)
+            and t.notes
+            and "deposit return" in t.notes.lower()
+        ]
+        ada_sent_intras = [
+            t for t in result
+            if isinstance(t, IntraTransaction)
+            and t.notes
+            and "ada sent to pool" in t.notes.lower()
+        ]
+
+        assert len(deposit_return_intras) >= 1, f"Should have at least one deposit return intra, got {len(deposit_return_intras)}"
+        assert len(ada_sent_intras) >= 1, f"Should have at least one ADA sent to pool intra, got {len(ada_sent_intras)}"
+
+        # Verify deposit return: 2.0 ADA from wallet to unknown
+        deposit_return = deposit_return_intras[0]
+        assert deposit_return.asset == "ADA", f"Asset should be ADA, got {deposit_return.asset}"
+        assert deposit_return.from_exchange == "yoroi_wallet", f"From should be yoroi_wallet, got {deposit_return.from_exchange}"
+        assert deposit_return.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {deposit_return.to_exchange}"
+        assert deposit_return.crypto_sent == "2.0", f"Crypto sent should be 2.0, got {deposit_return.crypto_sent}"
+
+        # Verify deposit return unique_id is the executed_tx from minswap
+        # Test data: executed_tx = abcd1111bbbb2222cccc3333dddd4444eeee5555
+        assert "abcd1111" in deposit_return.unique_id, f"Unique ID should be executed_tx, got {deposit_return.unique_id}"
+
+        # Verify ADA sent to pool: 102.75 ADA (100 + 2 + 0.75) from unknown to wallet
+        ada_sent = ada_sent_intras[0]
+        assert ada_sent.asset == "ADA", f"Asset should be ADA, got {ada_sent.asset}"
+        assert ada_sent.from_exchange == Keyword.UNKNOWN.value, f"From should be __unknown, got {ada_sent.from_exchange}"
+        assert ada_sent.to_exchange == "yoroi_wallet", f"To should be yoroi_wallet, got {ada_sent.to_exchange}"
+        # Crypto received should be 100 (ADA) + 2 (deposit) + 0.75 (fee) = 102.75
+        assert float(ada_sent.crypto_received) == 102.75, f"Crypto received should be 102.75, got {ada_sent.crypto_received}"
+
+        # Verify ADA sent unique_id is the created_tx from minswap
+        # Test data: created_tx = abcd0000bbbb1111cccc2222dddd3333eeee4444
+        assert "abcd0000" in ada_sent.unique_id, f"Unique ID should be created_tx, got {ada_sent.unique_id}"
+
+    def test_lp_deposit_intra_raw_data_from_minswap(self) -> None:
+        """Test that LP deposit intra transactions have raw_data from minswap CSV."""
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the deposit return intra transaction
+        deposit_return = next(
+            (t for t in result
+             if isinstance(t, IntraTransaction)
+             and t.notes
+             and "deposit return" in t.notes.lower()),
+            None
+        )
+
+        assert deposit_return is not None, "Should have deposit return intra"
+        # Raw data should contain Minswap-specific fields
+        assert "Minswap" in deposit_return.raw_data or "Deposit" in deposit_return.raw_data, (
+            f"Raw data should be from minswap, got: {deposit_return.raw_data[:100]}"
+        )
+
+    def test_lp_deposit_intra_notes_present(self) -> None:
+        """Test that LP deposit intra transactions have descriptive notes."""
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find both balancing intra transactions
+        intra_txs = [
+            t for t in result
+            if isinstance(t, IntraTransaction)
+            and t.notes
+            and ("deposit return" in t.notes.lower() or "ada sent to pool" in t.notes.lower())
+        ]
+
+        assert len(intra_txs) >= 2, f"Should have at least 2 balancing intras, got {len(intra_txs)}"
+
+        # Both should have notes
+        for tx in intra_txs:
+            assert tx.notes is not None and len(tx.notes) > 0, f"Intra should have notes: {tx.unique_id}"
+            assert "Minswap LP Deposit" in tx.notes, f"Notes should reference Minswap LP Deposit: {tx.notes}"
