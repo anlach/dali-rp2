@@ -290,6 +290,28 @@ def _create_swap_transactions(
         )
     )
 
+    # Create one balancing Intra transaction for the deposit return
+    # This balances the Yoroi Withdrawal entry (2 ADA deposit sent back)
+    raw_data_minswap = minswap_tx.get("raw_data", "")
+
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=executed_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=account_nickname,
+            from_holder=account_holder,
+            to_exchange=Keyword.UNKNOWN.value,
+            to_holder=Keyword.UNKNOWN.value,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
+            crypto_received=Keyword.UNKNOWN.value,
+            notes="Minswap Swap - deposit return",
+        )
+    )
+
 
 def _create_lp_deposit_transactions(
     minswap_tx: Dict, yoroi_withdrawal: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]

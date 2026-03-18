@@ -702,7 +702,7 @@ class TestYoroiCsv:
         )
 
     def test_lp_deposit_intra_notes_present(self) -> None:
-        """Test that LP deposit and removal intra transactions have descriptive notes."""
+        """Test that LP deposit, removal, and swap intra transactions have descriptive notes."""
         plugin = InputPlugin(
             account_holder="tester",
             account_nickname="yoroi_wallet",
@@ -714,7 +714,7 @@ class TestYoroiCsv:
 
         result = plugin.load(US())
 
-        # Find all balancing intra transactions (deposit + removal)
+        # Find all balancing intra transactions (deposit + removal + swaps)
         intra_txs = [
             t for t in result
             if isinstance(t, IntraTransaction)
@@ -722,13 +722,13 @@ class TestYoroiCsv:
             and ("deposit return" in t.notes.lower() or "ada sent to pool" in t.notes.lower())
         ]
 
-        # Should have at least 3: 2 from LP deposit + 1 from LP removal
-        assert len(intra_txs) >= 3, f"Should have at least 3 balancing intras (2 deposit + 1 removal), got {len(intra_txs)}"
+        # Should have at least 7: 2 from LP deposit + 1 from LP removal + 4 from swaps
+        assert len(intra_txs) >= 7, f"Should have at least 7 balancing intras, got {len(intra_txs)}"
 
         # All should have notes
         for tx in intra_txs:
             assert tx.notes is not None and len(tx.notes) > 0, f"Intra should have notes: {tx.unique_id}"
-            assert "Minswap LP" in tx.notes, f"Notes should reference Minswap LP: {tx.notes}"
+            assert "Minswap" in tx.notes, f"Notes should reference Minswap: {tx.notes}"
 
     def test_lp_removal_creates_balancing_intra_transaction(self) -> None:
         """Test that LP removal creates one balancing IntraTransaction for deposit return.
@@ -774,4 +774,50 @@ class TestYoroiCsv:
         # Verify raw_data is from minswap
         assert "Zap Out" in removal_intra.raw_data or "Minswap" in removal_intra.raw_data, (
             f"Raw data should be from minswap, got: {removal_intra.raw_data[:50]}"
+        )
+
+    def test_swap_creates_balancing_intra_transaction(self) -> None:
+        """Test that swap creates one balancing IntraTransaction for deposit return.
+
+        For each swap, we should have:
+        1. Intra: andrew_wallet -> __unknown, 2.0 ADA (deposit return)
+
+        The unique ID should be the executed_tx from minswap.
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the balancing intra transactions for swaps (deposit return)
+        swap_intras = [
+            t for t in result
+            if isinstance(t, IntraTransaction)
+            and t.notes
+            and "Minswap Swap - deposit return" in t.notes
+        ]
+
+        # Test data has 4 swaps, each should have 1 deposit return intra
+        assert len(swap_intras) >= 4, f"Should have at least 4 swap intras, got {len(swap_intras)}"
+
+        # Verify: 2.0 ADA from wallet to unknown
+        swap_intra = swap_intras[0]
+        assert swap_intra.asset == "ADA", f"Asset should be ADA, got {swap_intra.asset}"
+        assert swap_intra.from_exchange == "yoroi_wallet", f"From should be yoroi_wallet, got {swap_intra.from_exchange}"
+        assert swap_intra.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {swap_intra.to_exchange}"
+        assert swap_intra.crypto_sent == "2.0", f"Crypto sent should be 2.0, got {swap_intra.crypto_sent}"
+
+        # Verify unique_id is the executed_tx from minswap
+        # Test data first swap: executed_tx = aaaa1111bbbb2222cccc3333dddd4444eeee5555
+        assert "aaaa1111" in swap_intra.unique_id, f"Unique ID should be executed_tx, got {swap_intra.unique_id}"
+
+        # Verify raw_data is from minswap
+        assert "Market" in swap_intra.raw_data or "Minswap" in swap_intra.raw_data, (
+            f"Raw data should be from minswap, got: {swap_intra.raw_data[:50]}"
         )
