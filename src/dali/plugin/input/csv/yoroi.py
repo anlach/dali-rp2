@@ -53,6 +53,9 @@ from dali.out_transaction import OutTransaction
 _SENT: str = "Withdrawal"
 _RECV: str = "Deposit"
 
+# Cardano smart contract deposit return (always 2 ADA)
+_CARDANO_DEPOSIT_RETURN: float = 2.0
+
 # Minswap order types
 _ORDER_TYPE_MARKET: str = "Market"
 _ORDER_TYPE_LIMIT: str = "Limit"
@@ -420,7 +423,7 @@ def _create_lp_deposit_transactions(
 
     # Total ADA sent = paid ADA + deposit return (2.0) + execution fee
     # Note: ada_amount is already normalized from Lovelace
-    total_ada_sent = ada_amount + 2.0 + execution_fee
+    total_ada_sent = ada_amount + _CARDANO_DEPOSIT_RETURN + execution_fee
 
     # Balancing Intra 1: The deposit return (from Yoroi "receive" row)
     # Direction: andrew_wallet -> __unknown (sending 2 ADA deposit back)
@@ -436,7 +439,7 @@ def _create_lp_deposit_transactions(
             to_exchange=Keyword.UNKNOWN.value,
             to_holder=Keyword.UNKNOWN.value,
             spot_price=Keyword.UNKNOWN.value,
-            crypto_sent=str(2.0),
+            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
             crypto_received=Keyword.UNKNOWN.value,
             notes="Minswap LP Deposit - deposit return",
         )
@@ -573,6 +576,28 @@ def _create_zap_out_transactions(
             crypto_in=str(ada_received.amount),
             crypto_fee=str(total_fee),
             notes=notes,
+        )
+    )
+
+    # Create one balancing Intra transaction for the deposit return
+    # This balances the Yoroi Withdrawal entry (2 ADA deposit sent back)
+    raw_data_minswap = minswap_tx.get("raw_data", "")
+
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=created_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=account_nickname,
+            from_holder=account_holder,
+            to_exchange=Keyword.UNKNOWN.value,
+            to_holder=Keyword.UNKNOWN.value,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
+            crypto_received=Keyword.UNKNOWN.value,
+            notes="Minswap LP Removal - deposit return",
         )
     )
 

@@ -702,7 +702,7 @@ class TestYoroiCsv:
         )
 
     def test_lp_deposit_intra_notes_present(self) -> None:
-        """Test that LP deposit intra transactions have descriptive notes."""
+        """Test that LP deposit and removal intra transactions have descriptive notes."""
         plugin = InputPlugin(
             account_holder="tester",
             account_nickname="yoroi_wallet",
@@ -714,7 +714,7 @@ class TestYoroiCsv:
 
         result = plugin.load(US())
 
-        # Find both balancing intra transactions
+        # Find all balancing intra transactions (deposit + removal)
         intra_txs = [
             t for t in result
             if isinstance(t, IntraTransaction)
@@ -722,9 +722,56 @@ class TestYoroiCsv:
             and ("deposit return" in t.notes.lower() or "ada sent to pool" in t.notes.lower())
         ]
 
-        assert len(intra_txs) >= 2, f"Should have at least 2 balancing intras, got {len(intra_txs)}"
+        # Should have at least 3: 2 from LP deposit + 1 from LP removal
+        assert len(intra_txs) >= 3, f"Should have at least 3 balancing intras (2 deposit + 1 removal), got {len(intra_txs)}"
 
-        # Both should have notes
+        # All should have notes
         for tx in intra_txs:
             assert tx.notes is not None and len(tx.notes) > 0, f"Intra should have notes: {tx.unique_id}"
-            assert "Minswap LP Deposit" in tx.notes, f"Notes should reference Minswap LP Deposit: {tx.notes}"
+            assert "Minswap LP" in tx.notes, f"Notes should reference Minswap LP: {tx.notes}"
+
+    def test_lp_removal_creates_balancing_intra_transaction(self) -> None:
+        """Test that LP removal creates one balancing IntraTransaction for deposit return.
+
+        For each LP removal (Zap Out), we should have:
+        1. Intra: andrew_wallet -> __unknown, 2.0 ADA (deposit return)
+
+        The unique ID should be the created_tx from minswap.
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the balancing intra transaction for LP removal
+        removal_intras = [
+            t for t in result
+            if isinstance(t, IntraTransaction)
+            and t.notes
+            and "lp removal" in t.notes.lower()
+            and "deposit return" in t.notes.lower()
+        ]
+
+        assert len(removal_intras) >= 1, f"Should have at least one LP removal intra, got {len(removal_intras)}"
+
+        # Verify: 2.0 ADA from wallet to unknown
+        removal_intra = removal_intras[0]
+        assert removal_intra.asset == "ADA", f"Asset should be ADA, got {removal_intra.asset}"
+        assert removal_intra.from_exchange == "yoroi_wallet", f"From should be yoroi_wallet, got {removal_intra.from_exchange}"
+        assert removal_intra.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {removal_intra.to_exchange}"
+        assert removal_intra.crypto_sent == "2.0", f"Crypto sent should be 2.0, got {removal_intra.crypto_sent}"
+
+        # Verify unique_id is the created_tx from minswap
+        # Test data: created_tx = efgh6666ffff7777gggg8888hhhh9999iiii0000
+        assert "efgh6666" in removal_intra.unique_id, f"Unique ID should be created_tx, got {removal_intra.unique_id}"
+
+        # Verify raw_data is from minswap
+        assert "Zap Out" in removal_intra.raw_data or "Minswap" in removal_intra.raw_data, (
+            f"Raw data should be from minswap, got: {removal_intra.raw_data[:50]}"
+        )
