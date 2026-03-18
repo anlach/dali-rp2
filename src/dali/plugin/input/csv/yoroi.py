@@ -218,16 +218,9 @@ def _create_swap_transactions(
     # Get execution fee from Minswap
     execution_fee = _extract_execution_fee(minswap_tx["execution_fees"])
 
-    # Get on-chain fee and sell amount from Yoroi (the authoritative source)
-    on_chain_fee = 0.0
+    # Get sell amount from Yoroi (the authoritative source for on-chain amounts)
     yoroi_sell_amount = 0.0
     if yoroi_withdrawal:
-        fee_str = yoroi_withdrawal.get("fee", "0")
-        if fee_str:
-            try:
-                on_chain_fee = float(fee_str)
-            except (ValueError, TypeError):
-                pass
         sell_str = yoroi_withdrawal.get("sell_amount", "0")
         if sell_str:
             try:
@@ -235,7 +228,7 @@ def _create_swap_transactions(
             except (ValueError, TypeError):
                 pass
 
-    total_fee = execution_fee + on_chain_fee
+    total_fee = execution_fee
 
     # CRITICAL: Use Yoroi's on-chain sell amount, not Minswap's Paid amount
     # Minswap's Paid excludes the 2 ADA deposit return, but Yoroi shows the full amount
@@ -537,17 +530,7 @@ def _create_zap_out_transactions(
     # Get execution fee
     execution_fee = _extract_execution_fee(minswap_tx["execution_fees"])
 
-    # Get on-chain fee from Yoroi
-    on_chain_fee = 0.0
-    if yoroi_withdrawal:
-        fee_str = yoroi_withdrawal.get("fee", "0")
-        if fee_str:
-            try:
-                on_chain_fee = float(fee_str)
-            except (ValueError, TypeError):
-                pass
-
-    total_fee = execution_fee + on_chain_fee
+    total_fee = execution_fee
 
     # Look up cost basis for this LP amount
     # First, try to find by matching LP token amount (most reliable)
