@@ -615,11 +615,11 @@ class TestYoroiCsv:
 
         For each LP deposit, we should have:
         1. Intra: andrew_wallet -> __unknown, 2.0 ADA (deposit return)
-        2. Intra: __unknown -> andrew_wallet, 100 + 2 + 0.75 = 102.75 ADA (ADA sent to pool)
+        2. Intra: __unknown -> andrew_wallet, 100 + 2 + 0.75 = 102.75 ADA (ADA sent to contract)
 
         The unique IDs should be:
         - executed_tx for the deposit return
-        - created_tx for the ADA sent to pool
+        - created_tx for the ADA sent to contract
         """
         plugin = InputPlugin(
             account_holder="tester",
@@ -633,7 +633,7 @@ class TestYoroiCsv:
         result = plugin.load(US())
 
         # Find the balancing intra transactions for LP deposits
-        # These have notes containing "deposit return" or "ADA sent to pool"
+        # These have notes containing "deposit return" or "ADA sent to contract"
         deposit_return_intras = [
             t for t in result
             if isinstance(t, IntraTransaction)
@@ -644,11 +644,11 @@ class TestYoroiCsv:
             t for t in result
             if isinstance(t, IntraTransaction)
             and t.notes
-            and "ada sent to pool" in t.notes.lower()
+            and "ada sent to contract" in t.notes.lower()
         ]
 
         assert len(deposit_return_intras) >= 1, f"Should have at least one deposit return intra, got {len(deposit_return_intras)}"
-        assert len(ada_sent_intras) >= 1, f"Should have at least one ADA sent to pool intra, got {len(ada_sent_intras)}"
+        assert len(ada_sent_intras) >= 1, f"Should have at least one ADA sent to contract intra, got {len(ada_sent_intras)}"
 
         # Verify deposit return: 2.0 ADA from wallet to unknown
         deposit_return = deposit_return_intras[0]
@@ -661,7 +661,7 @@ class TestYoroiCsv:
         # Test data: executed_tx = abcd1111bbbb2222cccc3333dddd4444eeee5555
         assert "abcd1111" in deposit_return.unique_id, f"Unique ID should be executed_tx, got {deposit_return.unique_id}"
 
-        # Verify ADA sent to pool: 102.75 ADA (100 + 2 + 0.75) from unknown to wallet
+        # Verify ADA sent to contract: 102.75 ADA (100 + 2 + 0.75) from unknown to wallet
         ada_sent = ada_sent_intras[0]
         assert ada_sent.asset == "ADA", f"Asset should be ADA, got {ada_sent.asset}"
         assert ada_sent.from_exchange == Keyword.UNKNOWN.value, f"From should be __unknown, got {ada_sent.from_exchange}"
@@ -719,7 +719,7 @@ class TestYoroiCsv:
             t for t in result
             if isinstance(t, IntraTransaction)
             and t.notes
-            and ("deposit return" in t.notes.lower() or "ada sent to pool" in t.notes.lower())
+            and ("deposit return" in t.notes.lower() or "ada sent to contract" in t.notes.lower())
         ]
 
         # Should have at least 11: 2 from LP deposit + 1 from LP removal + 8 from swaps (4 swaps x 2)
@@ -779,7 +779,7 @@ class TestYoroiCsv:
     def test_swap_creates_balancing_intra_transaction(self) -> None:
         """Test that swap creates two balancing IntraTransactions:
         1. Deposit return: andrew_wallet -> __unknown, 2.0 ADA
-        2. ADA sent to pool: __unknown -> andrew_wallet, (input + 2.0 + fee)
+        2. ADA sent to contract: __unknown -> andrew_wallet, (input + 2.0 + fee)
         """
         plugin = InputPlugin(
             account_holder="tester",
@@ -800,17 +800,17 @@ class TestYoroiCsv:
             and "Minswap Swap - deposit return" in t.notes
         ]
 
-        # Find the ADA sent to pool intras
+        # Find the ADA sent to contract intras
         ada_sent_intras = [
             t for t in result
             if isinstance(t, IntraTransaction)
             and t.notes
-            and "Minswap Swap - ADA sent to pool" in t.notes
+            and "Minswap Swap - ADA sent to contract" in t.notes
         ]
 
         # Test data has 4 swaps, each should have 2 intras
         assert len(deposit_return_intras) >= 4, f"Should have at least 4 deposit return intras, got {len(deposit_return_intras)}"
-        assert len(ada_sent_intras) >= 4, f"Should have at least 4 ADA sent to pool intras, got {len(ada_sent_intras)}"
+        assert len(ada_sent_intras) >= 4, f"Should have at least 4 ADA sent to contract intras, got {len(ada_sent_intras)}"
 
         # Verify deposit return: 2.0 ADA from wallet to unknown
         swap_intra = deposit_return_intras[0]
@@ -822,7 +822,7 @@ class TestYoroiCsv:
         # Verify unique_id is the executed_tx from minswap
         assert "aaaa1111" in swap_intra.unique_id, f"Unique ID should be executed_tx, got {swap_intra.unique_id}"
 
-        # Verify ADA sent to pool: __unknown -> wallet
+        # Verify ADA sent to contract: __unknown -> wallet
         # Test data first swap: input = 10 ADA, fee = 0.7, deposit = 2.0, total = 12.7
         ada_sent = ada_sent_intras[0]
         assert ada_sent.asset == "ADA", f"Asset should be ADA, got {ada_sent.asset}"

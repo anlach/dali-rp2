@@ -331,7 +331,7 @@ def _create_swap_transactions(
             spot_price=Keyword.UNKNOWN.value,
             crypto_sent=Keyword.UNKNOWN.value,
             crypto_received=str(total_received),
-            notes="Minswap Swap - ADA sent to pool",
+            notes="Minswap Swap - ADA sent to contract",
         )
     )
 
@@ -506,7 +506,7 @@ def _create_lp_deposit_transactions(
             spot_price=Keyword.UNKNOWN.value,
             crypto_sent=Keyword.UNKNOWN.value,
             crypto_received=str(total_ada_sent),
-            notes="Minswap LP Deposit - ADA sent to pool",
+            notes="Minswap LP Deposit - ADA sent to contract",
         )
     )
 
