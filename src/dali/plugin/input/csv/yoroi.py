@@ -506,7 +506,7 @@ def _create_lp_deposit_transactions(
             spot_price=Keyword.UNKNOWN.value,
             crypto_sent=Keyword.UNKNOWN.value,
             crypto_received=str(total_ada_sent),
-            notes="Minswap LP Deposit - ADA sent to contract",
+            notes="Minswap LP Deposit - ADA sent to pool",
         )
     )
 

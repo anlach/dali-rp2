@@ -644,7 +644,7 @@ class TestYoroiCsv:
             t for t in result
             if isinstance(t, IntraTransaction)
             and t.notes
-            and "ada sent to contract" in t.notes.lower()
+            and "ada sent to pool" in t.notes.lower()
         ]
 
         assert len(deposit_return_intras) >= 1, f"Should have at least one deposit return intra, got {len(deposit_return_intras)}"
@@ -719,7 +719,7 @@ class TestYoroiCsv:
             t for t in result
             if isinstance(t, IntraTransaction)
             and t.notes
-            and ("deposit return" in t.notes.lower() or "ada sent to contract" in t.notes.lower())
+            and ("deposit return" in t.notes.lower() or "ada sent to" in t.notes.lower())
         ]
 
         # Should have at least 11: 2 from LP deposit + 1 from LP removal + 8 from swaps (4 swaps x 2)
