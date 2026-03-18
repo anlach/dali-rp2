@@ -586,7 +586,7 @@ def _create_zap_out_transactions(
     result.append(
         IntraTransaction(
             plugin=plugin_name,
-            unique_id=created_tx,
+            unique_id=executed_tx,
             raw_data=raw_data_minswap,
             timestamp=timestamp,
             asset="ADA",

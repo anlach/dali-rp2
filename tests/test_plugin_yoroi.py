@@ -767,9 +767,9 @@ class TestYoroiCsv:
         assert removal_intra.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {removal_intra.to_exchange}"
         assert removal_intra.crypto_sent == "2.0", f"Crypto sent should be 2.0, got {removal_intra.crypto_sent}"
 
-        # Verify unique_id is the created_tx from minswap
-        # Test data: created_tx = efgh6666ffff7777gggg8888hhhh9999iiii0000
-        assert "efgh6666" in removal_intra.unique_id, f"Unique ID should be created_tx, got {removal_intra.unique_id}"
+        # Verify unique_id is the executed_tx from minswap
+        # Test data: executed_tx = efgh7777ffff8888gggg9999hhhh0000iiii1111
+        assert "efgh7777" in removal_intra.unique_id, f"Unique ID should be executed_tx, got {removal_intra.unique_id}"
 
         # Verify raw_data is from minswap
         assert "Zap Out" in removal_intra.raw_data or "Minswap" in removal_intra.raw_data, (
