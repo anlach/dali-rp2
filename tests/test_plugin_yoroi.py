@@ -722,8 +722,8 @@ class TestYoroiCsv:
             and ("deposit return" in t.notes.lower() or "ada sent to pool" in t.notes.lower())
         ]
 
-        # Should have at least 7: 2 from LP deposit + 1 from LP removal + 4 from swaps
-        assert len(intra_txs) >= 7, f"Should have at least 7 balancing intras, got {len(intra_txs)}"
+        # Should have at least 11: 2 from LP deposit + 1 from LP removal + 8 from swaps (4 swaps x 2)
+        assert len(intra_txs) >= 11, f"Should have at least 11 balancing intras, got {len(intra_txs)}"
 
         # All should have notes
         for tx in intra_txs:
@@ -777,12 +777,9 @@ class TestYoroiCsv:
         )
 
     def test_swap_creates_balancing_intra_transaction(self) -> None:
-        """Test that swap creates one balancing IntraTransaction for deposit return.
-
-        For each swap, we should have:
-        1. Intra: andrew_wallet -> __unknown, 2.0 ADA (deposit return)
-
-        The unique ID should be the executed_tx from minswap.
+        """Test that swap creates two balancing IntraTransactions:
+        1. Deposit return: andrew_wallet -> __unknown, 2.0 ADA
+        2. ADA sent to pool: __unknown -> andrew_wallet, (input + 2.0 + fee)
         """
         plugin = InputPlugin(
             account_holder="tester",
@@ -795,29 +792,50 @@ class TestYoroiCsv:
 
         result = plugin.load(US())
 
-        # Find the balancing intra transactions for swaps (deposit return)
-        swap_intras = [
+        # Find the deposit return intras
+        deposit_return_intras = [
             t for t in result
             if isinstance(t, IntraTransaction)
             and t.notes
             and "Minswap Swap - deposit return" in t.notes
         ]
 
-        # Test data has 4 swaps, each should have 1 deposit return intra
-        assert len(swap_intras) >= 4, f"Should have at least 4 swap intras, got {len(swap_intras)}"
+        # Find the ADA sent to pool intras
+        ada_sent_intras = [
+            t for t in result
+            if isinstance(t, IntraTransaction)
+            and t.notes
+            and "Minswap Swap - ADA sent to pool" in t.notes
+        ]
 
-        # Verify: 2.0 ADA from wallet to unknown
-        swap_intra = swap_intras[0]
+        # Test data has 4 swaps, each should have 2 intras
+        assert len(deposit_return_intras) >= 4, f"Should have at least 4 deposit return intras, got {len(deposit_return_intras)}"
+        assert len(ada_sent_intras) >= 4, f"Should have at least 4 ADA sent to pool intras, got {len(ada_sent_intras)}"
+
+        # Verify deposit return: 2.0 ADA from wallet to unknown
+        swap_intra = deposit_return_intras[0]
         assert swap_intra.asset == "ADA", f"Asset should be ADA, got {swap_intra.asset}"
         assert swap_intra.from_exchange == "yoroi_wallet", f"From should be yoroi_wallet, got {swap_intra.from_exchange}"
         assert swap_intra.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {swap_intra.to_exchange}"
         assert swap_intra.crypto_sent == "2.0", f"Crypto sent should be 2.0, got {swap_intra.crypto_sent}"
 
         # Verify unique_id is the executed_tx from minswap
-        # Test data first swap: executed_tx = aaaa1111bbbb2222cccc3333dddd4444eeee5555
         assert "aaaa1111" in swap_intra.unique_id, f"Unique ID should be executed_tx, got {swap_intra.unique_id}"
 
+        # Verify ADA sent to pool: __unknown -> wallet
+        # Test data first swap: input = 10 ADA, fee = 0.7, deposit = 2.0, total = 12.7
+        ada_sent = ada_sent_intras[0]
+        assert ada_sent.asset == "ADA", f"Asset should be ADA, got {ada_sent.asset}"
+        assert ada_sent.from_exchange == Keyword.UNKNOWN.value, f"From should be __unknown, got {ada_sent.from_exchange}"
+        assert ada_sent.to_exchange == "yoroi_wallet", f"To should be yoroi_wallet, got {ada_sent.to_exchange}"
+
+        # Verify amount: input (10) + deposit (2) + fee (0.7) = 12.7
+        assert float(ada_sent.crypto_received) == 12.7, f"Crypto received should be 12.7, got {ada_sent.crypto_received}"
+
+        # Verify unique_id is the created_tx from minswap
+        assert "aaaa0000" in ada_sent.unique_id, f"Unique ID should be created_tx, got {ada_sent.unique_id}"
+
         # Verify raw_data is from minswap
-        assert "Market" in swap_intra.raw_data or "Minswap" in swap_intra.raw_data, (
-            f"Raw data should be from minswap, got: {swap_intra.raw_data[:50]}"
+        assert "Market" in ada_sent.raw_data or "Minswap" in ada_sent.raw_data, (
+            f"Raw data should be from minswap, got: {ada_sent.raw_data[:50]}"
         )
