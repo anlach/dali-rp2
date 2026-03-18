@@ -353,3 +353,256 @@ class TestYoroiCsv:
             f"Gain/loss should be ~-50.25 (loss from 100 ADA cost basis), "
             f"got {gain_loss}. This indicates cost basis lookup failed."
         )
+
+    def test_lp_deposit_creates_three_transactions(self) -> None:
+        """Test that LP deposit creates three transactions: ADA OUT, Token OUT, LP IN.
+
+        This verifies the fix for LP deposit transaction recording.
+        Before: LP deposits only stored cost basis internally (no transactions created)
+        After: Creates OUT for ADA, OUT for token, IN for LP tokens
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the LP deposit transactions (July 10, 2025)
+        # Deposit: 100 ADA + 5000 SNEK -> 10000 LP
+        lp_deposit_ada_out = next(
+            (t for t in result
+             if isinstance(t, OutTransaction)
+             and t.asset == "ADA"
+             and "lp_deposit" in t.unique_id.lower()),
+            None
+        )
+        lp_deposit_token_out = next(
+            (t for t in result
+             if isinstance(t, OutTransaction)
+             and t.asset == "SNEK"
+             and "lp_deposit" in t.unique_id.lower()),
+            None
+        )
+        lp_deposit_in = next(
+            (t for t in result
+             if isinstance(t, InTransaction)
+             and "LP-ADA-SNEK" in t.asset
+             and "lp_deposit" in t.unique_id.lower()),
+            None
+        )
+
+        assert lp_deposit_ada_out is not None, "LP deposit should create ADA OUT transaction"
+        assert lp_deposit_token_out is not None, "LP deposit should create SNEK OUT transaction"
+        assert lp_deposit_in is not None, "LP deposit should create LP token IN transaction"
+
+        # Verify amounts
+        assert "100" in lp_deposit_ada_out.crypto_out_no_fee, f"ADA amount should be 100, got {lp_deposit_ada_out.crypto_out_no_fee}"
+        assert "5000" in lp_deposit_token_out.crypto_out_no_fee, f"SNEK amount should be 5000, got {lp_deposit_token_out.crypto_out_no_fee}"
+        assert "10000" in lp_deposit_in.crypto_in, f"LP amount should be 10000, got {lp_deposit_in.crypto_in}"
+
+    def test_lp_deposit_has_derive_hint_for_token(self) -> None:
+        """Test that LP deposit token OUT has DERIVE hint for price lookup.
+
+        The token OUT transaction should include a DERIVE hint so the
+        transaction resolver can derive the price from the ADA amount.
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the SNEK OUT transaction from LP deposit
+        snek_out = next(
+            (t for t in result
+             if isinstance(t, OutTransaction)
+             and t.asset == "SNEK"
+             and "lp_deposit" in t.unique_id.lower()),
+            None
+        )
+
+        assert snek_out is not None, "Should have SNEK OUT from LP deposit"
+        assert "DERIVE" in snek_out.notes, f"Notes should contain DERIVE hint, got: {snek_out.notes}"
+        assert "ADA" in snek_out.notes, f"DERIVE hint should reference ADA, got: {snek_out.notes}"
+
+    def test_zap_out_creates_two_transactions(self) -> None:
+        """Test that Zap Out creates two transactions: LP OUT and ADA IN.
+
+        Note: We do NOT create a separate OUT for the original token (e.g., SNEK)
+        because the ADA IN already includes both the original ADA and token value.
+        The token was effectively "sold" at deposit time when LP tokens were received.
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the Zap Out transactions (July 15, 2025)
+        # Zap Out: 10000 LP -> 50.5 ADA (original: 100 ADA + 5000 SNEK)
+        lp_out = next(
+            (t for t in result
+             if isinstance(t, OutTransaction)
+             and "LP-ADA-SNEK" in t.asset
+             and "lp_remove" in t.unique_id.lower()),
+            None
+        )
+        token_out = next(
+            (t for t in result
+             if isinstance(t, OutTransaction)
+             and t.asset == "SNEK"
+             and "lp_remove" in t.unique_id.lower()),
+            None
+        )
+        ada_in = next(
+            (t for t in result
+             if isinstance(t, InTransaction)
+             and t.asset == "ADA"
+             and "lp_remove" in t.unique_id.lower()),
+            None
+        )
+
+        assert lp_out is not None, "Zap Out should create LP OUT transaction"
+        assert token_out is None, "Zap Out should NOT create separate SNEK OUT (it's in the ADA)"
+        assert ada_in is not None, "Zap Out should create ADA IN transaction"
+
+        # Verify amounts
+        assert "10000" in lp_out.crypto_out_no_fee, f"LP amount should be 10000, got {lp_out.crypto_out_no_fee}"
+        assert "50.5" in ada_in.crypto_in, f"ADA amount should be 50.5, got {ada_in.crypto_in}"
+
+    def test_zap_out_gain_loss_includes_token_value(self) -> None:
+        """Test that Zap Out gain/loss calculation includes token value.
+
+        The gain/loss should be: (ADA received) - (ADA cost basis from deposit)
+        The SNEK value is already baked into the ADA received.
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find the LP removal OutTransaction (SNEK pool)
+        lp_out = next(
+            (t for t in result
+             if isinstance(t, OutTransaction)
+             and "LP-ADA-SNEK" in t.asset
+             and "lp_remove" in t.unique_id.lower()),
+            None
+        )
+
+        assert lp_out is not None, "Should have LP removal OUT"
+        # The notes should contain the gain/loss which includes token value
+        assert "Gain/Loss" in lp_out.notes, f"Notes should contain Gain/Loss: {lp_out.notes}"
+
+        # Expected: (50.5 - 0.75 fee) - 100 = -50.25
+        # But we need to extract the actual value from notes
+        import re
+        match = re.search(r"Gain/Loss: ([-\d.]+)", lp_out.notes)
+        assert match is not None, "Should be able to extract gain/loss from notes"
+        gain_loss = float(match.group(1))
+        # Should be negative (a loss)
+        assert gain_loss < 0, f"Gain/loss should be negative, got {gain_loss}"
+
+    def test_multiple_assets_in_lp_deposit(self) -> None:
+        """Test that LP deposit handles both ADA and token in the paid field.
+
+        The test data has one LP deposit with both ADA and SNEK.
+        This verifies both assets are properly extracted.
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find LP deposit transactions with both assets (July 10, 2025)
+        # Deposit: 100 ADA + 5000 SNEK -> 10000 LP
+        # Check we have ADA OUT with amount containing "100"
+        ada_outs = [
+            t for t in result
+            if isinstance(t, OutTransaction)
+            and t.asset == "ADA"
+            and "lp_deposit" in t.unique_id.lower()
+        ]
+
+        # Check we have SNEK OUT with amount containing "5000"
+        snek_outs = [
+            t for t in result
+            if isinstance(t, OutTransaction)
+            and t.asset == "SNEK"
+            and "lp_deposit" in t.unique_id.lower()
+        ]
+
+        assert len(ada_outs) >= 1, "Should have at least one ADA OUT from LP deposit"
+        assert len(snek_outs) >= 1, "Should have at least one SNEK OUT from LP deposit"
+
+        # Verify amounts
+        ada_amount = ada_outs[0].crypto_out_no_fee
+        snek_amount = snek_outs[0].crypto_out_no_fee
+        assert "100" in ada_amount, f"ADA amount should contain 100, got {ada_amount}"
+        assert "5000" in snek_amount, f"SNEK amount should contain 5000, got {snek_amount}"
+
+    def test_full_lp_cycle_for_single_pool(self) -> None:
+        """Test the full LP cycle for a single pool (deposit + zap out).
+
+        This tests the SNEK pool which has both deposit and zap out.
+        Deposit: 100 ADA + 5000 SNEK -> 10000 LP-ADA-SNEK
+        Zap Out: 10000 LP-ADA-SNEK -> 50.5 ADA (plus 5000 SNEK implicitly sold)
+        """
+        plugin = InputPlugin(
+            account_holder="tester",
+            account_nickname="yoroi_wallet",
+            csv_file="input/test_yoroi.csv",
+            timezone="UTC",
+            native_fiat="USD",
+            minswap_csv="input/test_minswap.csv",
+        )
+
+        result = plugin.load(US())
+
+        # Find all SNEK-ADA pool transactions (include ADA for both LP deposit and removal)
+        snek_pool_txs = [
+            t for t in result
+            if ("SNEK" in (t.asset or "")
+                or "LP-ADA-SNEK" in (t.asset or "")
+                or (t.asset == "ADA" and ("lp_deposit" in t.unique_id.lower() or "lp_remove" in t.unique_id.lower())))
+            and ("lp_deposit" in t.unique_id.lower() or "lp_remove" in t.unique_id.lower())
+        ]
+
+        # Should have 5 transactions:
+        # - Deposit: ADA OUT, SNEK OUT, LP IN (3)
+        # - Zap Out: LP OUT, ADA IN (2)
+        assert len(snek_pool_txs) == 5, f"Expected 5 SNEK pool transactions, got {len(snek_pool_txs)}"
+
+        # Count by type
+        out_count = sum(1 for t in snek_pool_txs if isinstance(t, OutTransaction))
+        in_count = sum(1 for t in snek_pool_txs if isinstance(t, InTransaction))
+
+        assert out_count == 3, f"Expected 3 OUT transactions (2 for deposit, 1 for zap out), got {out_count}"
+        assert in_count == 2, f"Expected 2 IN transactions (LP in, ADA in), got {in_count}"

@@ -291,9 +291,11 @@ def _create_lp_deposit_transactions(
     minswap_tx: Dict, yoroi_withdrawal: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
 ) -> None:
     """
-    Handle LP Deposit - NOT TAXABLE (cost basis deferred).
+    Create transactions for LP Deposit.
 
-    Just tracks the LP cost basis for when it's removed.
+    Tax treatment: Depositing assets into an LP pool is a taxable event.
+    You are "selling" your assets (ADA + token) to receive LP tokens.
+    The cost basis of the LP tokens equals the value of assets deposited.
     """
     created_tx = minswap_tx["created_tx"]
     timestamp = minswap_tx["created_at"]
@@ -311,16 +313,19 @@ def _create_lp_deposit_transactions(
     ada_amount = 0.0
     token_amount = 0.0
     token_currency = None
+    ada_asset = None
 
     for asset in paid.assets:
         if asset.currency == "ADA":
             ada_amount = _normalize_ada_amount(asset.amount, asset.currency)
+            ada_asset = asset
         else:
             token_amount = asset.amount
             token_currency = asset.currency
 
     # Determine LP pair
     lp_pair = f"ADA-{token_currency}" if token_currency else "ADA-unknown"
+    lp_asset_name = f"LP-{lp_pair}"
 
     # Store cost basis for later LP removal
     # Key must include both pool AND LP amount to avoid collisions between different pools
@@ -334,14 +339,73 @@ def _create_lp_deposit_transactions(
         "deposit_tx": created_tx,
     }
 
-    # Log the LP deposit (for debugging)
-    raw_data = f"LP Deposit: {ada_amount} ADA + {token_amount} {token_currency} -> {lp_token.amount} LP"
-    notes = f"Minswap LP Deposit to {lp_pair} pool - cost basis deferred until removal"
+    # Create OUT transactions for each asset deposited
+    # These represent "selling" the assets to receive LP tokens
 
-    # For LP deposits, we track cost basis internally but don't create
-    # a taxable transaction (it's a capital contribution, not a disposal)
-    # The LP tokens will be sold/removed later, at which point tax is calculated
-    # Store is in module-level _LP_COST_BASES dict for later lookup
+    # OUT transaction for ADA
+    if ada_amount > 0:
+        raw_data_ada = f"LP Deposit: {ada_amount} ADA to {lp_pair} pool -> {lp_token.amount} LP"
+        notes_ada = f"Minswap LP Deposit to {lp_pair} pool - ADA portion"
+        result.append(
+            OutTransaction(
+                plugin=plugin_name,
+                unique_id=f"{created_tx[:16]}_lp_deposit_ada",
+                raw_data=raw_data_ada,
+                timestamp=timestamp,
+                asset="ADA",
+                exchange=account_nickname,
+                holder=account_holder,
+                transaction_type=Keyword.SELL.value,
+                spot_price=Keyword.UNKNOWN.value,
+                crypto_out_no_fee=str(ada_amount),
+                crypto_fee="0",
+                notes=notes_ada,
+            )
+        )
+
+    # OUT transaction for the token (e.g., SNEK)
+    if token_amount > 0 and token_currency:
+        raw_data_token = f"LP Deposit: {token_amount} {token_currency} to {lp_pair} pool -> {lp_token.amount} LP"
+        # Include derivation info so price can be derived from ADA
+        derive_info = f"DERIVE:ADA:{ada_amount}"
+        notes_token = f"Minswap LP Deposit to {lp_pair} pool - {token_currency} portion | {derive_info}"
+        result.append(
+            OutTransaction(
+                plugin=plugin_name,
+                unique_id=f"{created_tx[:16]}_lp_deposit_{token_currency.lower()}",
+                raw_data=raw_data_token,
+                timestamp=timestamp,
+                asset=token_currency,
+                exchange=account_nickname,
+                holder=account_holder,
+                transaction_type=Keyword.SELL.value,
+                spot_price=Keyword.UNKNOWN.value,
+                crypto_out_no_fee=str(token_amount),
+                crypto_fee="0",
+                notes=notes_token,
+            )
+        )
+
+    # IN transaction for LP tokens received
+    # Cost basis = value of assets deposited (stored for later use)
+    raw_data_lp = f"LP Deposit: {ada_amount} ADA + {token_amount} {token_currency} -> {lp_token.amount} LP"
+    notes_lp = f"Minswap LP Deposit to {lp_pair} pool - received LP tokens | Cost basis: {ada_amount} ADA + {token_amount} {token_currency}"
+    result.append(
+        InTransaction(
+            plugin=plugin_name,
+            unique_id=f"{created_tx[:16]}_lp_deposit_in",
+            raw_data=raw_data_lp,
+            timestamp=timestamp,
+            asset=lp_asset_name,
+            exchange=account_nickname,
+            holder=account_holder,
+            transaction_type=Keyword.BUY.value,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_in=str(lp_token.amount),
+            crypto_fee="0",
+            notes=notes_lp,
+        )
+    )
 
 
 def _create_zap_out_transactions(
@@ -434,7 +498,12 @@ def _create_zap_out_transactions(
         )
     )
 
-    # InTransaction: Receive ADA (cost basis is original deposit value)
+    # Note: We do NOT create a separate OUT transaction for the original token (e.g., SNEK)
+    # because the ADA IN already represents both the original ADA and the token value.
+    # The token was effectively "sold" at deposit time when LP tokens were received.
+    # The gain/loss is calculated on the LP token disposal (LP OUT vs LP IN cost basis).
+
+    # InTransaction: Receive ADA (includes both original ADA + token value converted to ADA)
     result.append(
         InTransaction(
             plugin=plugin_name,
