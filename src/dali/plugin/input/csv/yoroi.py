@@ -191,7 +191,7 @@ def _extract_execution_fee(execution_fees_str: str) -> float:
 
 
 def _create_swap_transactions(
-    minswap_tx: Dict, yoroi_withdrawal: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
+    minswap_tx: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
 ) -> None:
     """
     Create InTransaction + OutTransaction for a Market/Limit swap.
@@ -212,27 +212,16 @@ def _create_swap_transactions(
 
     if not paid.assets or not receive.assets:
         return
+    paid_amount = paid.assets[0].amount
 
     output_asset = receive.assets[0]
 
     # Get execution fee from Minswap
     execution_fee = _extract_execution_fee(minswap_tx["execution_fees"])
-
-    # Get sell amount from Yoroi (the authoritative source for on-chain amounts)
-    yoroi_sell_amount = 0.0
-    if yoroi_withdrawal:
-        sell_str = yoroi_withdrawal.get("sell_amount", "0")
-        if sell_str:
-            try:
-                yoroi_sell_amount = float(sell_str)
-            except (ValueError, TypeError):
-                pass
-
     total_fee = execution_fee
 
-    # CRITICAL: Use Yoroi's on-chain sell amount, not Minswap's Paid amount
     # Minswap's Paid excludes the 2 ADA deposit return, but Yoroi shows the full amount
-    input_amount = yoroi_sell_amount
+    input_amount = paid_amount + _CARDANO_DEPOSIT_RETURN + total_fee
     input_currency = "ADA"  # Swaps always involve selling ADA
 
     # OutTransaction: Sell the input asset (ADA) using on-chain amount
@@ -308,7 +297,7 @@ def _create_swap_transactions(
     # Create second balancing Intra transaction for the ADA sent to the pool
     # This balances the Yoroi Withdrawal entry (the swap amount)
     # Received amount = input_amount (from minswap Paid) + deposit return + execution fee
-    total_received = input_amount + _CARDANO_DEPOSIT_RETURN + execution_fee
+    total_received = paid_amount + _CARDANO_DEPOSIT_RETURN + execution_fee
 
     result.append(
         IntraTransaction(
@@ -330,7 +319,7 @@ def _create_swap_transactions(
 
 
 def _create_lp_deposit_transactions(
-    minswap_tx: Dict, yoroi_withdrawal: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
+    minswap_tx: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
 ) -> None:
     """
     Create transactions for LP Deposit.
@@ -505,7 +494,7 @@ def _create_lp_deposit_transactions(
 
 
 def _create_zap_out_transactions(
-    minswap_tx: Dict, yoroi_withdrawal: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
+    minswap_tx: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
 ) -> None:
     """
     Create InTransaction + OutTransaction for Zap Out (LP removal).
@@ -699,7 +688,7 @@ class InputPlugin(AbstractInputPlugin):
 
         # Process Minswap transactions if CSV provided
         if self.__minswap_csv:
-            self._process_minswap_transactions(yoroi_data, result)
+            self._process_minswap_transactions(result)
 
         return result
 
@@ -824,7 +813,7 @@ class InputPlugin(AbstractInputPlugin):
                     )
                 )
 
-    def _process_minswap_transactions(self, yoroi_data: List[Dict], result: List[AbstractTransaction]) -> None:
+    def _process_minswap_transactions(self, result: List[AbstractTransaction]) -> None:
         """Process Minswap transactions into proper InTransaction/OutTransaction pairs."""
         try:
             minswap_txs = _load_minswap_csv(self.__minswap_csv)
@@ -834,28 +823,14 @@ class InputPlugin(AbstractInputPlugin):
 
         self.__logger.info("Processing %d Minswap transactions", len(minswap_txs))
 
-        # First pass: process all Minswap transactions
-        # Note: We need to process LP Deposits BEFORE Zap Outs to have cost basis available
-        # So split into two passes
-
-        # First pass: LP Deposits (order_type = 'Deposit')
         for minswap_tx in minswap_txs:
             if minswap_tx["order_type"] == _ORDER_TYPE_DEPOSIT:
-                # Find matching Yoroi withdrawal
-                yoroi_withdrawal = _get_yoroi_tx_by_hash(yoroi_data, minswap_tx["created_tx"])
-                _create_lp_deposit_transactions(minswap_tx, yoroi_withdrawal, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
-
-        # Second pass: Swaps (Market, Limit)
-        for minswap_tx in minswap_txs:
+                _create_lp_deposit_transactions(minswap_tx, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
             if minswap_tx["order_type"] in [_ORDER_TYPE_MARKET, _ORDER_TYPE_LIMIT]:
-                yoroi_withdrawal = _get_yoroi_tx_by_hash(yoroi_data, minswap_tx["created_tx"])
-                _create_swap_transactions(minswap_tx, yoroi_withdrawal, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
-
-        # Third pass: LP Removals (Zap Out)
-        for minswap_tx in minswap_txs:
+                _create_swap_transactions(minswap_tx, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
             if minswap_tx["order_type"] == _ORDER_TYPE_ZAP_OUT:
-                yoroi_withdrawal = _get_yoroi_tx_by_hash(yoroi_data, minswap_tx["created_tx"])
-                _create_zap_out_transactions(minswap_tx, yoroi_withdrawal, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
+                _create_zap_out_transactions(minswap_tx, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
+
 
         self.__logger.info(
             "Minswap processed: %d swaps, %d LP deposits, %d LP removals",
