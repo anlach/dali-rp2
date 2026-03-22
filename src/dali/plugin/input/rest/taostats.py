@@ -152,7 +152,9 @@ class InputPlugin(AbstractInputPlugin):
 
         # Calculate spot price if we have USD value
         spot_price = "0"
-        if amount_tao and RP2Decimal(amount_tao) > 0:
+        amount_tao_decimal = RP2Decimal(amount_tao)
+        zero = RP2Decimal("0")
+        if amount_tao and amount_tao_decimal > zero:
             spot_price = str(usd_value / RP2Decimal(amount_tao))
 
         unique_id = f"{extrinsic_id}_{action}_{netuid}"
@@ -239,7 +241,7 @@ class InputPlugin(AbstractInputPlugin):
                 asset="TAO",
                 exchange="Staking",
                 holder=self.account_holder,
-                transaction_type=Keyword.STAKING.value,
+                transaction_type=Keyword.SELL.value,
                 spot_price=spot_price,
                 crypto_out_no_fee=amount_tao,
                 crypto_fee=fee,
