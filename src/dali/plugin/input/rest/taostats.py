@@ -85,13 +85,13 @@ class InputPlugin(AbstractInputPlugin):
 
     def _fetch_delegations(self) -> List[Dict[str, Any]]:
         """Fetch delegation history from Taostats API."""
-        url = f"{_API_BASE_URL}/delegation/history"
+        url = f"{_API_BASE_URL}/delegation/v1"
         headers = {
             "Authorization": self.__api_key,
             "Content-Type": "application/json",
         }
         params = {
-            _COLDKEY: self.__coldkey,
+            "nominator": self.__coldkey,
         }
 
         self.__logger.debug(f"Fetching delegations from {url} with params {params}")
