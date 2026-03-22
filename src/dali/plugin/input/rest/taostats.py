@@ -38,6 +38,7 @@ from dali.out_transaction import OutTransaction
 _ACTION: str = "action"
 _ALPHA: str = "alpha"
 _AMOUNT: str = "amount"
+_COLDKEY: str = "coldkey"
 _DELEGATE: str = "DELEGATE"
 _EXTRINSIC_ID: str = "extrinsic_id"
 _FEE: str = "fee"
@@ -60,10 +61,12 @@ class InputPlugin(AbstractInputPlugin):
         self,
         account_holder: str,
         api_key: str,
+        coldkey: Optional[str] = None,
         native_fiat: Optional[str] = None,
     ) -> None:
         super().__init__(account_holder=account_holder, native_fiat=native_fiat)
         self.__api_key: str = api_key
+        self.__coldkey: str = coldkey if coldkey else account_holder
         self.__logger: logging.Logger = create_logger(f"{self.__PLUGIN_NAME}/{self.account_holder}")
 
     def cache_key(self) -> Optional[str]:
@@ -88,7 +91,7 @@ class InputPlugin(AbstractInputPlugin):
             "Content-Type": "application/json",
         }
         params = {
-            "coldkey": self.account_holder,
+            _COLDKEY: self.__coldkey,
         }
 
         self.__logger.debug(f"Fetching delegations from {url} with params {params}")
