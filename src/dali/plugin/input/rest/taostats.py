@@ -19,9 +19,10 @@
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
+import bittensor
 import requests
 from rp2.abstract_country import AbstractCountry
 from rp2.logger import create_logger
@@ -52,6 +53,8 @@ _ROOT_SUBNET_NETUID: int = 0
 _TAO_DECIMALS: int = 9
 _ALPHA_DECIMALS: int = 9
 _API_BASE_URL: str = "https://api.taostats.io/api"
+_BLOCKS_PER_DAY: int = 1_036_800  # ~12 blocks/second
+_CURRENT_BLOCK: int = 7_800_000  # Approximate current block number
 
 
 class InputPlugin(AbstractInputPlugin):
@@ -62,15 +65,69 @@ class InputPlugin(AbstractInputPlugin):
         account_holder: str,
         api_key: str,
         coldkey: Optional[str] = None,
+        subtensor_network: str = "archive",
+        include_emissions: bool = True,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         native_fiat: Optional[str] = None,
     ) -> None:
         super().__init__(account_holder=account_holder, native_fiat=native_fiat)
         self.__api_key: str = api_key
         self.__coldkey: str = coldkey if coldkey else account_holder
+        self.__subtensor_network: str = subtensor_network
+        self.__include_emissions: bool = include_emissions
+        self.__start_date: Optional[str] = start_date
+        self.__end_date: Optional[str] = end_date
         self.__logger: logging.Logger = create_logger(f"{self.__PLUGIN_NAME}/{self.account_holder}")
 
     def cache_key(self) -> Optional[str]:
         return f"taostats-{self.account_holder}"
+
+    def _calculate_block_for_date(self, date_str: str) -> int:
+        """Calculate estimated block number for a given date.
+
+        Uses current block ~7.8M and works backwards at ~12 blocks/second.
+        """
+        try:
+            target_date = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+
+            # Calculate days difference
+            days_diff = (now - target_date).days
+
+            if days_diff < 0:
+                self.__logger.warning(f"Date {date_str} is in the future, using current block")
+                return _CURRENT_BLOCK
+
+            # Calculate approximate block number
+            estimated_block = _CURRENT_BLOCK - (days_diff * _BLOCKS_PER_DAY)
+
+            self.__logger.debug(f"Estimated block for {date_str}: {estimated_block} (days_diff={days_diff})")
+            return max(0, estimated_block)
+
+        except ValueError as e:
+            self.__logger.error(f"Invalid date format {date_str}: {e}")
+            return _CURRENT_BLOCK
+
+    def _get_date_range(self) -> List[str]:
+        """Get list of dates between start_date and end_date."""
+        if not self.__start_date or not self.__end_date:
+            return []
+
+        try:
+            start = datetime.strptime(self.__start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            end = datetime.strptime(self.__end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+            dates = []
+            current = start
+            while current <= end:
+                dates.append(current.strftime("%Y-%m-%d"))
+                current += timedelta(days=1)
+
+            return dates
+        except ValueError as e:
+            self.__logger.error(f"Invalid date range: {e}")
+            return []
 
     def load(self, country: AbstractCountry) -> List[AbstractTransaction]:
         result: List[AbstractTransaction] = []
@@ -79,6 +136,41 @@ class InputPlugin(AbstractInputPlugin):
         for delegation in delegations:
             transactions = self._process_delegation(delegation)
             result.extend(transactions)
+
+        # Fetch emissions if enabled
+        if self.__include_emissions:
+            # Check for historical backfilling
+            date_range = self._get_date_range()
+
+            if date_range:
+                # Historical backfilling mode
+                self.__logger.info(f"Starting historical emission backfilling for {len(date_range)} days")
+                total_emissions = 0
+
+                for date_str in date_range:
+                    block_num = self._calculate_block_for_date(date_str)
+                    self.__logger.info(f"Fetching emissions for {date_str} at block {block_num}")
+
+                    try:
+                        emissions: List[Dict[str, Any]] = self._fetch_emissions(block=block_num)
+                        for emission in emissions:
+                            transactions = self._process_emission(emission, date_str)
+                            result.extend(transactions)
+                            total_emissions += 1
+
+                        self.__logger.debug(f"Processed {len(emissions)} emissions for {date_str}")
+
+                    except Exception as e:
+                        self.__logger.warning(f"Failed to fetch emissions for {date_str}: {e}")
+                        continue
+
+                self.__logger.info(f"Historical backfilling complete: {total_emissions} emission records from {len(date_range)} days")
+            else:
+                # Current emissions only (existing behavior)
+                emissions: List[Dict[str, Any]] = self._fetch_emissions()
+                for emission in emissions:
+                    transactions = self._process_emission(emission)
+                    result.extend(transactions)
 
         self.__logger.info(f"Loaded {len(result)} transactions from Taostats for {self.account_holder}")
         return result
@@ -127,6 +219,91 @@ class InputPlugin(AbstractInputPlugin):
         except json.JSONDecodeError as e:
             self.__logger.error(f"JSON decode error: {e}")
             return []
+
+    def _fetch_emissions(self, block: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Fetch emission (staking rewards) data from Bittensor Subtensor API.
+
+        Args:
+            block: Optional block number for historical queries. If None, fetches current emissions.
+        """
+        block_info = f" at block {block}" if block else " (current)"
+        self.__logger.debug(f"Fetching emissions for coldkey {self.__coldkey} from subtensor network {self.__subtensor_network}{block_info}")
+
+        try:
+            # Connect to subtensor
+            subtensor = bittensor.Subtensor(network=self.__subtensor_network)
+
+            # Get stake info for the coldkey (optionally at historical block)
+            if block is not None:
+                stake_info = subtensor.get_stake_info_for_coldkey(self.__coldkey, block=block)
+            else:
+                stake_info = subtensor.get_stake_info_for_coldkey(self.__coldkey)
+
+            # Convert StakeInfo objects to dicts with relevant emission data
+            emissions: List[Dict[str, Any]] = []
+            for stake in stake_info:
+                # Each stake has hotkey_ss58, netuid, stake, and emission (as Balance)
+                emission_rao = stake.emission.rao if stake.emission else 0
+                if emission_rao > 0:
+                    emissions.append({
+                        "hotkey": stake.hotkey_ss58,
+                        "netuid": stake.netuid,
+                        "emission_rao": str(emission_rao),
+                        "stake_rao": str(stake.stake.rao) if stake.stake else "0",
+                    })
+
+            self.__logger.debug(f"Found {len(emissions)} emission entries")
+            return emissions
+
+        except Exception as e:
+            self.__logger.error(f"Error fetching emissions from subtensor: {e}")
+            return []
+
+    def _process_emission(self, emission: Dict[str, Any], date_str: Optional[str] = None) -> List[AbstractTransaction]:
+        """Process a single emission record into an InTransaction.
+
+        Args:
+            emission: The emission data dictionary
+            date_str: Optional date string (YYYY-MM-DD) for historical data. If None, uses current date.
+        """
+        transactions: List[AbstractTransaction] = []
+
+        hotkey = emission.get("hotkey", "")
+        netuid = emission.get("netuid", 0)
+        emission_rao = emission.get("emission_rao", "0")
+
+        # Convert RAO to TAO
+        emission_tao = self._rao_to_tao(emission_rao)
+
+        # Skip zero emissions
+        if emission_tao == "0" or RP2Decimal(emission_tao) <= RP2Decimal("0"):
+            return transactions
+
+        # Use provided date or current date for unique ID
+        date = date_str if date_str else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        unique_id = f"emission-{netuid}-{hotkey}-{date}"
+
+        # Get timestamp for the transaction
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        in_tx = InTransaction(
+            plugin=self.__PLUGIN_NAME,
+            unique_id=unique_id,
+            raw_data=json.dumps(emission),
+            timestamp=timestamp,
+            asset="TAO",
+            exchange="Staking",
+            holder=self.account_holder,
+            transaction_type=Keyword.STAKING.value,
+            spot_price="0",  # Will be filled in by price lookups later
+            crypto_in=emission_tao,
+            notes=f"Daily staking emission for subnet {netuid} from {hotkey}",
+            is_spot_price_from_web=False,
+            fiat_ticker=self.native_fiat,
+        )
+        transactions.append(in_tx)
+
+        return transactions
 
     def _process_delegation(self, delegation: Dict[str, Any]) -> List[AbstractTransaction]:
         """Process a single delegation/undelegation record into transactions."""
