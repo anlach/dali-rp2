@@ -496,14 +496,16 @@ def _apply_transaction_hint(
     direction: str
     transaction_type: str
     notes: str
-    (direction, transaction_type, notes) = global_configuration[Keyword.TRANSACTION_HINTS.value][transaction.unique_id]
+    new_unique_id: str
+    (direction, transaction_type, notes, new_unique_id) = global_configuration[Keyword.TRANSACTION_HINTS.value][transaction.unique_id]
     transaction_type = transaction_type.capitalize()
     notes = f"{notes}; {transaction.notes if transaction.notes else ''}"
+    final_unique_id: str = new_unique_id if new_unique_id else transaction.unique_id
     if direction == Keyword.IN.value:
         if isinstance(transaction, InTransaction):
             result = InTransaction(
                 plugin=transaction.plugin,
-                unique_id=transaction.unique_id,
+                unique_id=final_unique_id,
                 raw_data=f"{Keyword.IN.value}->{Keyword.IN.value}: {transaction.raw_data}",
                 timestamp=transaction.timestamp,
                 asset=transaction.asset,
@@ -528,7 +530,7 @@ def _apply_transaction_hint(
                 )
             result = InTransaction(
                 plugin=transaction.plugin,
-                unique_id=transaction.unique_id,
+                unique_id=final_unique_id,
                 raw_data=f"{Keyword.INTRA.value}->{Keyword.IN.value}: {transaction.raw_data}",
                 timestamp=transaction.timestamp,
                 asset=transaction.asset,
@@ -545,7 +547,7 @@ def _apply_transaction_hint(
         if isinstance(transaction, OutTransaction):
             result = OutTransaction(
                 plugin=transaction.plugin,
-                unique_id=transaction.unique_id,
+                unique_id=final_unique_id,
                 raw_data=f"{Keyword.OUT.value}->{Keyword.OUT.value}: {transaction.raw_data}",
                 timestamp=transaction.timestamp,
                 asset=transaction.asset,
@@ -574,7 +576,7 @@ def _apply_transaction_hint(
 
             result = OutTransaction(
                 plugin=transaction.plugin,
-                unique_id=transaction.unique_id,
+                unique_id=final_unique_id,
                 raw_data=f"{Keyword.INTRA.value}->{Keyword.OUT.value}: {transaction.raw_data}",
                 timestamp=transaction.timestamp,
                 asset=transaction.asset,
@@ -590,7 +592,7 @@ def _apply_transaction_hint(
         if isinstance(transaction, InTransaction):
             result = IntraTransaction(
                 plugin=transaction.plugin,
-                unique_id=transaction.unique_id,
+                unique_id=final_unique_id,
                 raw_data=f"{Keyword.IN.value}->{Keyword.INTRA.value}: {transaction.raw_data}",
                 timestamp=transaction.timestamp,
                 asset=transaction.asset,
@@ -611,7 +613,7 @@ def _apply_transaction_hint(
                 )
             result = IntraTransaction(
                 plugin=transaction.plugin,
-                unique_id=transaction.unique_id,
+                unique_id=final_unique_id,
                 raw_data=f"{Keyword.OUT.value}->{Keyword.INTRA.value}: {transaction.raw_data}",
                 timestamp=transaction.timestamp,
                 asset=transaction.asset,
@@ -627,7 +629,7 @@ def _apply_transaction_hint(
         elif isinstance(transaction, IntraTransaction):
             result = IntraTransaction(
                 plugin=transaction.plugin,
-                unique_id=transaction.unique_id,
+                unique_id=final_unique_id,
                 raw_data=f"{Keyword.INTRA.value}->{Keyword.INTRA.value}: {transaction.raw_data}",
                 timestamp=transaction.timestamp,
                 asset=transaction.asset,

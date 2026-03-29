@@ -25,3 +25,5 @@ __pycache__/
 src/*.egg-info/
 .venv/
 .vscode/
+AGENTS.md
+pyrightconfig.json

@@ -40,6 +40,7 @@ class DirectionTypeAndNotes(NamedTuple):
     direction: str
     transaction_type: str
     notes: str
+    new_unique_id: str = ""
 
 
 class AbstractTransaction:

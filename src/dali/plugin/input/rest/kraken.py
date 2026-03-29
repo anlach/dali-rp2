@@ -184,12 +184,12 @@ class InputPlugin(AbstractCcxtInputPlugin):
     def _end_date(self) -> Optional[datetime]:
         return self.__end_date
 
-    def _get_base_from_asset(self, asset: str) -> str:
-        # Try to strip each suffix in order (longer suffixes first to avoid partial matches)
+    def _get_base_from_asset(self, asset: str) -> Optional[str]:
+        if asset.endswith(".F"):
+            return None
         for suffix in self._ASSET_SUFFIXES:
             if asset.endswith(suffix):
                 base_asset = asset[: -len(suffix)]
-                # For staking assets (.S, .M), strip trailing digits too
                 if suffix in (".S", ".M"):
                     while base_asset and base_asset[-1].isdigit():
                         base_asset = base_asset[:-1]
@@ -288,13 +288,15 @@ class InputPlugin(AbstractCcxtInputPlugin):
 
             timestamp_value: str = self._rp2_timestamp_from_seconds_epoch(record[_TIMESTAMP])
 
-            asset_base: str = self._get_base_from_asset(record[_ASSET])
+            asset_base: Optional[str] = self._get_base_from_asset(record[_ASSET])
+            if asset_base is None:
+                continue
             is_fiat_asset: bool = asset_base in _KRAKEN_FIAT_LIST
 
             amount: RP2Decimal = RP2Decimal(abs(RP2Decimal(record[_AMOUNT])))
             raw_data = str(record)
 
-            unique_id: str = record[_REFID] if record[_REFID] else ledger_id
+            unique_id: str = record[_REFID] if record[_REFID] and record[_REFID].lower() != "unknown" else Keyword.UNKNOWN.value
 
             if record[_TYPE] in {_WITHDRAWAL, _DEPOSIT}:
                 is_deposit: bool = record[_TYPE] == _DEPOSIT

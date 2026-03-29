@@ -336,9 +336,9 @@ def _validate_transaction_hints_configuration(ini_config: ConfigParser, section_
             LOGGER.error("Invalid transaction_hint value in %s = %s", unique_id, transaction_hint)
             sys.exit(1)
 
-        tokenized_transaction_hint = transaction_hint.split(":", 2)
-        if len(tokenized_transaction_hint) != 3:
-            LOGGER.error("Invalid transaction_hint format (expected <direction>:<transaction_type>:<notes>): %s = %s", unique_id, transaction_hint)
+        tokenized_transaction_hint = transaction_hint.split(":", 3)
+        if len(tokenized_transaction_hint) < 3:
+            LOGGER.error("Invalid transaction_hint format (expected <direction>:<transaction_type>:<notes>[:new_unique_id]): %s = %s", unique_id, transaction_hint)
             sys.exit(1)
 
         # Check direction
@@ -360,7 +360,12 @@ def _validate_transaction_hints_configuration(ini_config: ConfigParser, section_
 
         notes = tokenized_transaction_hint[2].strip()
 
-        result[unique_id] = DirectionTypeAndNotes(direction, transaction_type, notes)
+        # Optional 4th field: new_unique_id
+        new_unique_id: str = ""
+        if len(tokenized_transaction_hint) == 4:
+            new_unique_id = tokenized_transaction_hint[3].strip()
+
+        result[unique_id] = DirectionTypeAndNotes(direction, transaction_type, notes, new_unique_id)
     return result
 
 
