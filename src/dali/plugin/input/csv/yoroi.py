@@ -53,6 +53,9 @@ from dali.out_transaction import OutTransaction
 _SENT: str = "Withdrawal"
 _RECV: str = "Deposit"
 
+# Cardano smart contract deposit return (always 2 ADA)
+_CARDANO_DEPOSIT_RETURN: float = 2.0
+
 # Minswap order types
 _ORDER_TYPE_MARKET: str = "Market"
 _ORDER_TYPE_LIMIT: str = "Limit"
@@ -162,6 +165,7 @@ def _load_minswap_csv(filepath: str) -> List[Dict]:
                 "execution_fees": row[8],
                 "executed_tx": row[9],
                 "executed_at": row[10],
+                "raw_data": ",".join(row),  # Store full row as raw_data
             }
             results.append(row_dict)
 
@@ -187,7 +191,7 @@ def _extract_execution_fee(execution_fees_str: str) -> float:
 
 
 def _create_swap_transactions(
-    minswap_tx: Dict, yoroi_withdrawal: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
+    minswap_tx: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
 ) -> None:
     """
     Create InTransaction + OutTransaction for a Market/Limit swap.
@@ -208,34 +212,16 @@ def _create_swap_transactions(
 
     if not paid.assets or not receive.assets:
         return
+    paid_amount = paid.assets[0].amount
 
     output_asset = receive.assets[0]
 
     # Get execution fee from Minswap
     execution_fee = _extract_execution_fee(minswap_tx["execution_fees"])
+    total_fee = execution_fee
 
-    # Get on-chain fee and sell amount from Yoroi (the authoritative source)
-    on_chain_fee = 0.0
-    yoroi_sell_amount = 0.0
-    if yoroi_withdrawal:
-        fee_str = yoroi_withdrawal.get("fee", "0")
-        if fee_str:
-            try:
-                on_chain_fee = float(fee_str)
-            except (ValueError, TypeError):
-                pass
-        sell_str = yoroi_withdrawal.get("sell_amount", "0")
-        if sell_str:
-            try:
-                yoroi_sell_amount = float(sell_str)
-            except (ValueError, TypeError):
-                pass
-
-    total_fee = execution_fee + on_chain_fee
-
-    # CRITICAL: Use Yoroi's on-chain sell amount, not Minswap's Paid amount
     # Minswap's Paid excludes the 2 ADA deposit return, but Yoroi shows the full amount
-    input_amount = yoroi_sell_amount
+    input_amount = paid_amount + _CARDANO_DEPOSIT_RETURN + total_fee
     input_currency = "ADA"  # Swaps always involve selling ADA
 
     # OutTransaction: Sell the input asset (ADA) using on-chain amount
@@ -286,14 +272,61 @@ def _create_swap_transactions(
         )
     )
 
+    # Create one balancing Intra transaction for the deposit return
+    # This balances the Yoroi Withdrawal entry (2 ADA deposit sent back)
+    raw_data_minswap = minswap_tx.get("raw_data", "")
+
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=executed_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=account_nickname,
+            from_holder=account_holder,
+            to_exchange=Keyword.UNKNOWN.value,
+            to_holder=Keyword.UNKNOWN.value,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
+            crypto_received=Keyword.UNKNOWN.value,
+            notes="Minswap Swap - deposit return",
+        )
+    )
+
+    # Create second balancing Intra transaction for the ADA sent to the pool
+    # This balances the Yoroi Withdrawal entry (the swap amount)
+    # Received amount = input_amount (from minswap Paid) + deposit return + execution fee
+    total_received = paid_amount + _CARDANO_DEPOSIT_RETURN + execution_fee
+
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=created_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=Keyword.UNKNOWN.value,
+            from_holder=Keyword.UNKNOWN.value,
+            to_exchange=account_nickname,
+            to_holder=account_holder,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=Keyword.UNKNOWN.value,
+            crypto_received=str(total_received),
+            notes="Minswap Swap - ADA sent to contract",
+        )
+    )
+
 
 def _create_lp_deposit_transactions(
-    minswap_tx: Dict, yoroi_withdrawal: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
+    minswap_tx: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
 ) -> None:
     """
-    Handle LP Deposit - NOT TAXABLE (cost basis deferred).
+    Create transactions for LP Deposit.
 
-    Just tracks the LP cost basis for when it's removed.
+    Tax treatment: Depositing assets into an LP pool is a taxable event.
+    You are "selling" your assets (ADA + token) to receive LP tokens.
+    The cost basis of the LP tokens equals the value of assets deposited.
     """
     created_tx = minswap_tx["created_tx"]
     timestamp = minswap_tx["created_at"]
@@ -311,16 +344,19 @@ def _create_lp_deposit_transactions(
     ada_amount = 0.0
     token_amount = 0.0
     token_currency = None
+    ada_asset = None
 
     for asset in paid.assets:
         if asset.currency == "ADA":
             ada_amount = _normalize_ada_amount(asset.amount, asset.currency)
+            ada_asset = asset
         else:
             token_amount = asset.amount
             token_currency = asset.currency
 
     # Determine LP pair
     lp_pair = f"ADA-{token_currency}" if token_currency else "ADA-unknown"
+    lp_asset_name = f"LP-{lp_pair}"
 
     # Store cost basis for later LP removal
     # Key must include both pool AND LP amount to avoid collisions between different pools
@@ -334,18 +370,131 @@ def _create_lp_deposit_transactions(
         "deposit_tx": created_tx,
     }
 
-    # Log the LP deposit (for debugging)
-    raw_data = f"LP Deposit: {ada_amount} ADA + {token_amount} {token_currency} -> {lp_token.amount} LP"
-    notes = f"Minswap LP Deposit to {lp_pair} pool - cost basis deferred until removal"
+    # Create OUT transactions for each asset deposited
+    # These represent "selling" the assets to receive LP tokens
 
-    # For LP deposits, we track cost basis internally but don't create
-    # a taxable transaction (it's a capital contribution, not a disposal)
-    # The LP tokens will be sold/removed later, at which point tax is calculated
-    # Store is in module-level _LP_COST_BASES dict for later lookup
+    # OUT transaction for ADA
+    if ada_amount > 0:
+        raw_data_ada = f"LP Deposit: {ada_amount} ADA to {lp_pair} pool -> {lp_token.amount} LP"
+        notes_ada = f"Minswap LP Deposit to {lp_pair} pool - ADA portion"
+        result.append(
+            OutTransaction(
+                plugin=plugin_name,
+                unique_id=f"{created_tx[:16]}_lp_deposit_ada",
+                raw_data=raw_data_ada,
+                timestamp=timestamp,
+                asset="ADA",
+                exchange=account_nickname,
+                holder=account_holder,
+                transaction_type=Keyword.SELL.value,
+                spot_price=Keyword.UNKNOWN.value,
+                crypto_out_no_fee=str(ada_amount),
+                crypto_fee="0",
+                notes=notes_ada,
+            )
+        )
+
+    # OUT transaction for the token (e.g., SNEK)
+    if token_amount > 0 and token_currency:
+        raw_data_token = f"LP Deposit: {token_amount} {token_currency} to {lp_pair} pool -> {lp_token.amount} LP"
+        # Include derivation info so price can be derived from ADA
+        derive_info = f"DERIVE:ADA:{ada_amount}"
+        notes_token = f"Minswap LP Deposit to {lp_pair} pool - {token_currency} portion | {derive_info}"
+        result.append(
+            OutTransaction(
+                plugin=plugin_name,
+                unique_id=f"{created_tx[:16]}_lp_deposit_{token_currency.lower()}",
+                raw_data=raw_data_token,
+                timestamp=timestamp,
+                asset=token_currency,
+                exchange=account_nickname,
+                holder=account_holder,
+                transaction_type=Keyword.SELL.value,
+                spot_price=Keyword.UNKNOWN.value,
+                crypto_out_no_fee=str(token_amount),
+                crypto_fee="0",
+                notes=notes_token,
+            )
+        )
+
+    # IN transaction for LP tokens received
+    # Cost basis = value of assets deposited (stored for later use)
+    raw_data_lp = f"LP Deposit: {ada_amount} ADA + {token_amount} {token_currency} -> {lp_token.amount} LP"
+    # Include derivation info: double the ADA contribution for spot price calculation
+    derive_info = f"DERIVE:ADA:{ada_amount * 2}"
+    notes_lp = f"Minswap LP Deposit to {lp_pair} pool - received LP tokens | Cost basis: {ada_amount} ADA + {token_amount} {token_currency} | {derive_info}"
+    result.append(
+        InTransaction(
+            plugin=plugin_name,
+            unique_id=f"{created_tx[:16]}_lp_deposit_in",
+            raw_data=raw_data_lp,
+            timestamp=timestamp,
+            asset=lp_asset_name,
+            exchange=account_nickname,
+            holder=account_holder,
+            transaction_type=Keyword.BUY.value,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_in=str(lp_token.amount),
+            crypto_fee="0",
+            notes=notes_lp,
+        )
+    )
+
+    # Create two balancing Intra transactions to replace/complement the Yoroi entries
+    # Get execution fee and executed tx from minswap
+    execution_fee = _extract_execution_fee(minswap_tx["execution_fees"])
+    executed_tx = minswap_tx["executed_tx"]
+
+    # Build raw_data from minswap row
+    raw_data_minswap = minswap_tx.get("raw_data", "")
+
+    # Total ADA sent = paid ADA + deposit return (2.0) + execution fee
+    # Note: ada_amount is already normalized from Lovelace
+    total_ada_sent = ada_amount + _CARDANO_DEPOSIT_RETURN + execution_fee
+
+    # Balancing Intra 1: The deposit return (from Yoroi "receive" row)
+    # Direction: andrew_wallet -> __unknown (sending 2 ADA deposit back)
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=executed_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=account_nickname,
+            from_holder=account_holder,
+            to_exchange=Keyword.UNKNOWN.value,
+            to_holder=Keyword.UNKNOWN.value,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
+            crypto_received=Keyword.UNKNOWN.value,
+            notes="Minswap LP Deposit - deposit return",
+        )
+    )
+
+    # Balancing Intra 2: The ADA sent to the pool (from Yoroi "send" row)
+    # Direction: __unknown -> andrew_wallet (receiving the ADA back from the pool operation)
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=created_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=Keyword.UNKNOWN.value,
+            from_holder=Keyword.UNKNOWN.value,
+            to_exchange=account_nickname,
+            to_holder=account_holder,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=Keyword.UNKNOWN.value,
+            crypto_received=str(total_ada_sent),
+            notes="Minswap LP Deposit - ADA sent to pool",
+        )
+    )
 
 
 def _create_zap_out_transactions(
-    minswap_tx: Dict, yoroi_withdrawal: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
+    minswap_tx: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
 ) -> None:
     """
     Create InTransaction + OutTransaction for Zap Out (LP removal).
@@ -370,38 +519,40 @@ def _create_zap_out_transactions(
     # Get execution fee
     execution_fee = _extract_execution_fee(minswap_tx["execution_fees"])
 
-    # Get on-chain fee from Yoroi
-    on_chain_fee = 0.0
-    if yoroi_withdrawal:
-        fee_str = yoroi_withdrawal.get("fee", "0")
-        if fee_str:
-            try:
-                on_chain_fee = float(fee_str)
-            except (ValueError, TypeError):
-                pass
+    total_fee = execution_fee
 
-    total_fee = execution_fee + on_chain_fee
+    # Look up cost basis for this LP amount
+    # First, try to find by matching LP token amount (most reliable)
+    cost_basis = {"ada_cost": 0.0, "token_cost": 0.0, "token_currency": "UNKNOWN", "pool": "unknown"}
+    lp_amount = int(lp_token.amount)
 
-    # Look up cost basis for this LP amount - must match the key format from deposit (pool + amount)
-    # We need to determine the pool from the assets being received (the non-LP asset)
-    pool_name = "unknown"
-    for asset in receive.assets:
-        if asset.currency != "LP":
-            pool_name = f"ADA-{asset.currency}"
+    for key, cb in _LP_COST_BASES.items():
+        # Key format is poolname_amount, extract amount
+        key_amount = int(key.split('_')[-1])
+        if key_amount == lp_amount:
+            cost_basis = cb
             break
 
-    lp_key = f"{pool_name}_{int(lp_token.amount)}"
-    cost_basis = _LP_COST_BASES.get(lp_key, {"ada_cost": 0.0, "token_cost": 0.0, "token_currency": "UNKNOWN", "pool": "unknown"})
+    # If not found by amount, try the old method (pool from received assets)
+    if cost_basis.get("pool") == "unknown":
+        pool_name = "unknown"
+        for asset in receive.assets:
+            if asset.currency != "LP":
+                pool_name = f"ADA-{asset.currency}"
+                break
+        lp_key = f"{pool_name}_{lp_amount}"
+        cost_basis = _LP_COST_BASES.get(lp_key, cost_basis)
 
     # Calculate gain/loss
     net_proceeds = ada_received.amount - total_fee
     cost_basis_ada = cost_basis.get("ada_cost", 0.0)
     gain_loss = net_proceeds - cost_basis_ada
 
-    # Determine pool name
+    # Determine pool name (e.g., ADA-MIN, ADA-SNEK)
     pool_name = cost_basis.get("pool", "unknown")
+    lp_asset_name = f"LP-{pool_name}"  # Specific LP token name like LP-ADA-MIN
 
-    raw_data = f"Zap Out: {lp_token.amount} LP -> {ada_received.amount} ADA"
+    raw_data = f"Zap Out: {lp_token.amount} {lp_asset_name} -> {ada_received.amount} ADA"
     notes = f"Minswap LP Removal from {pool_name} pool - Gain/Loss: {gain_loss:.2f} ADA"
 
     # OutTransaction: Remove/sell LP tokens
@@ -411,7 +562,7 @@ def _create_zap_out_transactions(
             unique_id=f"{created_tx[:16]}_lp_remove_out",
             raw_data=raw_data,
             timestamp=timestamp,
-            asset="LP",
+            asset=lp_asset_name,
             exchange=account_nickname,
             holder=account_holder,
             transaction_type=Keyword.SELL.value,
@@ -422,7 +573,12 @@ def _create_zap_out_transactions(
         )
     )
 
-    # InTransaction: Receive ADA (cost basis is original deposit value)
+    # Note: We do NOT create a separate OUT transaction for the original token (e.g., SNEK)
+    # because the ADA IN already represents both the original ADA and the token value.
+    # The token was effectively "sold" at deposit time when LP tokens were received.
+    # The gain/loss is calculated on the LP token disposal (LP OUT vs LP IN cost basis).
+
+    # InTransaction: Receive ADA (includes both original ADA + token value converted to ADA)
     result.append(
         InTransaction(
             plugin=plugin_name,
@@ -437,6 +593,28 @@ def _create_zap_out_transactions(
             crypto_in=str(ada_received.amount),
             crypto_fee=str(total_fee),
             notes=notes,
+        )
+    )
+
+    # Create one balancing Intra transaction for the deposit return
+    # This balances the Yoroi Withdrawal entry (2 ADA deposit sent back)
+    raw_data_minswap = minswap_tx.get("raw_data", "")
+
+    result.append(
+        IntraTransaction(
+            plugin=plugin_name,
+            unique_id=executed_tx,
+            raw_data=raw_data_minswap,
+            timestamp=timestamp,
+            asset="ADA",
+            from_exchange=account_nickname,
+            from_holder=account_holder,
+            to_exchange=Keyword.UNKNOWN.value,
+            to_holder=Keyword.UNKNOWN.value,
+            spot_price=Keyword.UNKNOWN.value,
+            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
+            crypto_received=Keyword.UNKNOWN.value,
+            notes="Minswap LP Removal - deposit return",
         )
     )
 
@@ -510,7 +688,7 @@ class InputPlugin(AbstractInputPlugin):
 
         # Process Minswap transactions if CSV provided
         if self.__minswap_csv:
-            self._process_minswap_transactions(yoroi_data, result)
+            self._process_minswap_transactions(result)
 
         return result
 
@@ -635,7 +813,7 @@ class InputPlugin(AbstractInputPlugin):
                     )
                 )
 
-    def _process_minswap_transactions(self, yoroi_data: List[Dict], result: List[AbstractTransaction]) -> None:
+    def _process_minswap_transactions(self, result: List[AbstractTransaction]) -> None:
         """Process Minswap transactions into proper InTransaction/OutTransaction pairs."""
         try:
             minswap_txs = _load_minswap_csv(self.__minswap_csv)
@@ -645,28 +823,14 @@ class InputPlugin(AbstractInputPlugin):
 
         self.__logger.info("Processing %d Minswap transactions", len(minswap_txs))
 
-        # First pass: process all Minswap transactions
-        # Note: We need to process LP Deposits BEFORE Zap Outs to have cost basis available
-        # So split into two passes
-
-        # First pass: LP Deposits (order_type = 'Deposit')
         for minswap_tx in minswap_txs:
             if minswap_tx["order_type"] == _ORDER_TYPE_DEPOSIT:
-                # Find matching Yoroi withdrawal
-                yoroi_withdrawal = _get_yoroi_tx_by_hash(yoroi_data, minswap_tx["created_tx"])
-                _create_lp_deposit_transactions(minswap_tx, yoroi_withdrawal, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
-
-        # Second pass: Swaps (Market, Limit)
-        for minswap_tx in minswap_txs:
+                _create_lp_deposit_transactions(minswap_tx, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
             if minswap_tx["order_type"] in [_ORDER_TYPE_MARKET, _ORDER_TYPE_LIMIT]:
-                yoroi_withdrawal = _get_yoroi_tx_by_hash(yoroi_data, minswap_tx["created_tx"])
-                _create_swap_transactions(minswap_tx, yoroi_withdrawal, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
-
-        # Third pass: LP Removals (Zap Out)
-        for minswap_tx in minswap_txs:
+                _create_swap_transactions(minswap_tx, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
             if minswap_tx["order_type"] == _ORDER_TYPE_ZAP_OUT:
-                yoroi_withdrawal = _get_yoroi_tx_by_hash(yoroi_data, minswap_tx["created_tx"])
-                _create_zap_out_transactions(minswap_tx, yoroi_withdrawal, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
+                _create_zap_out_transactions(minswap_tx, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
+
 
         self.__logger.info(
             "Minswap processed: %d swaps, %d LP deposits, %d LP removals",
