@@ -84,6 +84,7 @@ _KRAKEN_FIAT_SET: Set[str] = {"AUD", "CAD", "EUR", "GBP", "JPY", "USD", "ZAUD", 
 
 _KRAKEN_FIAT_LIST = list(set(list(_KRAKEN_FIAT_SET) + list(_FIAT_SET)))
 
+
 class InputPlugin(AbstractCcxtInputPlugin):
     # Suffixes to strip to get base asset (order matters - longer first)
     _ASSET_SUFFIXES: Tuple[str, ...] = (".HOLD", ".HO", ".B", ".F", ".M", ".S")
@@ -246,7 +247,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
         if not self.base_id_to_base:
             self._initialize_markets()
 
-        (trade_history, ledger) = self._gather_api_data()
+        trade_history, ledger = self._gather_api_data()
         result = self._compute_transaction_set(trade_history, ledger)
 
         # Filter by end_date if specified (since CCXT's 'since' parameter is start time, not end time)
@@ -258,14 +259,14 @@ class InputPlugin(AbstractCcxtInputPlugin):
     def _filter_by_end_date(self, transactions: List[AbstractTransaction]) -> List[AbstractTransaction]:
         """Filter transactions to only include those on or before the end_date."""
         filtered: List[AbstractTransaction] = []
+        if self.__end_date is None:
+            return transactions
         for transaction in transactions:
-            # Parse the transaction timestamp (format: "2025-12-31 23:59:59+0000")
             try:
                 tx_datetime = datetime.strptime(transaction.timestamp, "%Y-%m-%d %H:%M:%S%z")
                 if tx_datetime <= self.__end_date:
                     filtered.append(transaction)
             except ValueError:
-                # If we can't parse, include the transaction to be safe
                 self.__logger.warning("Could not parse timestamp: %s, including transaction", transaction.timestamp)
                 filtered.append(transaction)
 
@@ -288,11 +289,12 @@ class InputPlugin(AbstractCcxtInputPlugin):
             timestamp_value: str = self._rp2_timestamp_from_seconds_epoch(record[_TIMESTAMP])
 
             asset_base: str = self._get_base_from_asset(record[_ASSET])
-            # Check if base asset is fiat (strip suffixes like .B which indicate yield-bearing crypto)
             is_fiat_asset: bool = asset_base in _KRAKEN_FIAT_LIST
 
             amount: RP2Decimal = RP2Decimal(abs(RP2Decimal(record[_AMOUNT])))
             raw_data = str(record)
+
+            unique_id: str = record[_REFID] if record[_REFID] else ledger_id
 
             if record[_TYPE] in {_WITHDRAWAL, _DEPOSIT}:
                 is_deposit: bool = record[_TYPE] == _DEPOSIT
@@ -302,7 +304,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 result.append(
                     IntraTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
@@ -353,7 +355,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                     result.append(
                         InTransaction(
                             plugin=self.__PLUGIN_NAME,
-                            unique_id=Keyword.UNKNOWN.value,
+                            unique_id=unique_id,
                             raw_data=raw_data,
                             timestamp=timestamp_value,
                             asset=asset_base,
@@ -377,7 +379,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                     result.append(
                         OutTransaction(
                             plugin=self.__PLUGIN_NAME,
-                            unique_id=Keyword.UNKNOWN.value,
+                            unique_id=unique_id,
                             raw_data=raw_data,
                             timestamp=timestamp_value,
                             asset=asset_base,
@@ -404,7 +406,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 result.append(
                     OutTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
@@ -427,7 +429,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 result.append(
                     InTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
@@ -455,7 +457,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 result.append(
                     InTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
@@ -478,7 +480,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 result.append(
                     InTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
@@ -500,7 +502,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 result.append(
                     InTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
@@ -521,7 +523,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 result.append(
                     InTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
@@ -536,19 +538,12 @@ class InputPlugin(AbstractCcxtInputPlugin):
                     )
                 )
             elif record[_TYPE] == _SPEND:
-                # Crypto spent - OutTransaction
-                # If spending fiat (e.g., fiat withdrawal), set fiat_out_no_fee to the amount
                 spot_price = Keyword.UNKNOWN.value
-
-                if is_fiat_asset:
-                    fiat_out_no_fee: str = str(amount)
-                else:
-                    fiat_out_no_fee = None  # Not fiat, so no fiat_out
 
                 result.append(
                     OutTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,
@@ -559,7 +554,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                         crypto_out_no_fee=str(amount),
                         crypto_fee=out_crypto_fee,
                         crypto_out_with_fee=str(amount + RP2Decimal(record[_FEE])) if record[_FEE] else str(amount),
-                        fiat_out_no_fee=fiat_out_no_fee,
+                        fiat_out_no_fee=str(amount) if is_fiat_asset else None,
                         fiat_fee=fiat_fee,
                         notes=ledger_id,
                     )
@@ -572,7 +567,7 @@ class InputPlugin(AbstractCcxtInputPlugin):
                 result.append(
                     InTransaction(
                         plugin=self.__PLUGIN_NAME,
-                        unique_id=Keyword.UNKNOWN.value,
+                        unique_id=unique_id,
                         raw_data=raw_data,
                         timestamp=timestamp_value,
                         asset=asset_base,

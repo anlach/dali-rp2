@@ -242,7 +242,7 @@ def test_kraken(
     expect_result = [
         IntraTransaction(
             plugin="kraken_REST",
-            unique_id=Keyword.UNKNOWN.value,
+            unique_id="somerefid0",
             raw_data="{"
             "'aclass': 'currency', "
             "'amount': '3.0000000000', "
@@ -267,7 +267,7 @@ def test_kraken(
         ),
         IntraTransaction(
             plugin="kraken_REST",
-            unique_id=Keyword.UNKNOWN.value,
+            unique_id="somerefid1",
             raw_data="{"
             "'aclass': 'currency', "
             "'amount': '9.4149333100', "
@@ -292,7 +292,7 @@ def test_kraken(
         ),
         InTransaction(
             plugin="kraken_REST",
-            unique_id="__unknown",
+            unique_id="somerefid2",
             raw_data="{"
             "'aclass': 'currency', "
             "'amount': '8.0906135700', "
@@ -318,7 +318,7 @@ def test_kraken(
         ),
         OutTransaction(
             plugin="kraken_REST",
-            unique_id=Keyword.UNKNOWN.value,
+            unique_id="somerefid3",
             raw_data="{"
             "'aclass': 'currency', "
             "'amount': '-3.0000000000', "
