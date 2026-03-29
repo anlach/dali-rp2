@@ -190,6 +190,16 @@ def _extract_execution_fee(execution_fees_str: str) -> float:
     return 0.0
 
 
+def _extract_change_amount(change_amount_str: str) -> float:
+    """Extract the change amount from a string like '1.5 ADA' or '0.08318 ADA'."""
+    if not change_amount_str:
+        return 0.0
+    match = re.match(r"([\d.]+)", change_amount_str)
+    if match:
+        return float(match.group(1))
+    return 0.0
+
+
 def _create_swap_transactions(
     minswap_tx: Dict, account_nickname: str, account_holder: str, plugin_name: str, result: List[AbstractTransaction]
 ) -> None:
@@ -272,6 +282,10 @@ def _create_swap_transactions(
         )
     )
 
+    # Get change amount from Minswap to calculate total deposit return
+    change_amount = _extract_change_amount(minswap_tx.get("change_amount", ""))
+    total_returned = _CARDANO_DEPOSIT_RETURN + change_amount
+
     # Create one balancing Intra transaction for the deposit return
     # This balances the Yoroi Withdrawal entry (2 ADA deposit sent back)
     raw_data_minswap = minswap_tx.get("raw_data", "")
@@ -288,8 +302,8 @@ def _create_swap_transactions(
             to_exchange=Keyword.UNKNOWN.value,
             to_holder=Keyword.UNKNOWN.value,
             spot_price=Keyword.UNKNOWN.value,
-            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
-            crypto_received=Keyword.UNKNOWN.value,
+            crypto_sent=str(total_returned),
+            crypto_received=str(total_returned),
             notes="Minswap Swap - deposit return",
         )
     )
@@ -452,6 +466,10 @@ def _create_lp_deposit_transactions(
     # Note: ada_amount is already normalized from Lovelace
     total_ada_sent = ada_amount + _CARDANO_DEPOSIT_RETURN + execution_fee
 
+    # Get change amount from Minswap to calculate total deposit return
+    change_amount = _extract_change_amount(minswap_tx.get("change_amount", ""))
+    total_returned = _CARDANO_DEPOSIT_RETURN + change_amount
+
     # Balancing Intra 1: The deposit return (from Yoroi "receive" row)
     # Direction: andrew_wallet -> __unknown (sending 2 ADA deposit back)
     result.append(
@@ -466,8 +484,8 @@ def _create_lp_deposit_transactions(
             to_exchange=Keyword.UNKNOWN.value,
             to_holder=Keyword.UNKNOWN.value,
             spot_price=Keyword.UNKNOWN.value,
-            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
-            crypto_received=Keyword.UNKNOWN.value,
+            crypto_sent=str(total_returned),
+            crypto_received=str(total_returned),
             notes="Minswap LP Deposit - deposit return",
         )
     )
@@ -596,9 +614,15 @@ def _create_zap_out_transactions(
         )
     )
 
-    # Create one balancing Intra transaction for the deposit return
-    # This balances the Yoroi Withdrawal entry (2 ADA deposit sent back)
+    # Get change amount from Minswap to calculate total deposit return
+    change_amount = _extract_change_amount(minswap_tx.get("change_amount", ""))
+    total_returned = _CARDANO_DEPOSIT_RETURN + change_amount
+
+    # Create one balancing Intra transaction for the LP removal
+    # This balances: deposit return + change + ADA received from the pool
+    # Total = 2 (deposit) + change_amount + ada_received
     raw_data_minswap = minswap_tx.get("raw_data", "")
+    total_sent_to_contract = total_returned + ada_received.amount
 
     result.append(
         IntraTransaction(
@@ -612,9 +636,9 @@ def _create_zap_out_transactions(
             to_exchange=Keyword.UNKNOWN.value,
             to_holder=Keyword.UNKNOWN.value,
             spot_price=Keyword.UNKNOWN.value,
-            crypto_sent=str(_CARDANO_DEPOSIT_RETURN),
+            crypto_sent=str(total_sent_to_contract),
             crypto_received=Keyword.UNKNOWN.value,
-            notes="Minswap LP Removal - deposit return",
+            notes="Minswap LP Removal - deposit return + ADA received",
         )
     )
 

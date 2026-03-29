@@ -633,32 +633,34 @@ class TestYoroiCsv:
         result = plugin.load(US())
 
         # Find the balancing intra transactions for LP deposits
-        # These have notes containing "deposit return" or "ADA sent to contract"
+        # These have notes containing "LP Deposit - deposit return"
         deposit_return_intras = [
             t for t in result
             if isinstance(t, IntraTransaction)
             and t.notes
-            and "deposit return" in t.notes.lower()
+            and "lp deposit - deposit return" in t.notes.lower()
         ]
         ada_sent_intras = [
             t for t in result
             if isinstance(t, IntraTransaction)
             and t.notes
-            and "ada sent to pool" in t.notes.lower()
+            and "lp deposit - ada sent to pool" in t.notes.lower()
         ]
 
         assert len(deposit_return_intras) >= 1, f"Should have at least one deposit return intra, got {len(deposit_return_intras)}"
         assert len(ada_sent_intras) >= 1, f"Should have at least one ADA sent to contract intra, got {len(ada_sent_intras)}"
 
-        # Verify deposit return: 2.0 ADA from wallet to unknown
+        # Verify deposit return: 2.0 + change_amount from wallet to unknown
+        # Test data LP deposit: change_amount = 2.5, total = 2.0 + 2.5 = 4.5
         deposit_return = deposit_return_intras[0]
         assert deposit_return.asset == "ADA", f"Asset should be ADA, got {deposit_return.asset}"
         assert deposit_return.from_exchange == "yoroi_wallet", f"From should be yoroi_wallet, got {deposit_return.from_exchange}"
         assert deposit_return.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {deposit_return.to_exchange}"
-        assert deposit_return.crypto_sent == "2.0", f"Crypto sent should be 2.0, got {deposit_return.crypto_sent}"
+        assert deposit_return.crypto_sent == "4.5", f"Crypto sent should be 4.5, got {deposit_return.crypto_sent}"
+        assert deposit_return.crypto_received == "4.5", f"Crypto received should be 4.5, got {deposit_return.crypto_received}"
 
         # Verify deposit return unique_id is the executed_tx from minswap
-        # Test data: executed_tx = abcd1111bbbb2222cccc3333dddd4444eeee5555
+        # Test data: executed_tx for LP Deposit = abcd1111bbbb2222cccc3333dddd4444eeee5555
         assert "abcd1111" in deposit_return.unique_id, f"Unique ID should be executed_tx, got {deposit_return.unique_id}"
 
         # Verify ADA sent to contract: 102.75 ADA (100 + 2 + 0.75) from unknown to wallet
@@ -760,15 +762,18 @@ class TestYoroiCsv:
 
         assert len(removal_intras) >= 1, f"Should have at least one LP removal intra, got {len(removal_intras)}"
 
-        # Verify: 2.0 ADA from wallet to unknown
+        # Verify: deposit + change + ADA received from wallet to unknown
+        # Test data LP removal: deposit = 2.0, change = 1.25, ada_received = 50.5
+        # Total = 2.0 + 1.25 + 50.5 = 53.75
         removal_intra = removal_intras[0]
         assert removal_intra.asset == "ADA", f"Asset should be ADA, got {removal_intra.asset}"
         assert removal_intra.from_exchange == "yoroi_wallet", f"From should be yoroi_wallet, got {removal_intra.from_exchange}"
         assert removal_intra.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {removal_intra.to_exchange}"
-        assert removal_intra.crypto_sent == "2.0", f"Crypto sent should be 2.0, got {removal_intra.crypto_sent}"
+        assert removal_intra.crypto_sent == "53.75", f"Crypto sent should be 53.75, got {removal_intra.crypto_sent}"
+        assert removal_intra.crypto_received == Keyword.UNKNOWN.value, f"Crypto received should be __unknown, got {removal_intra.crypto_received}"
 
         # Verify unique_id is the executed_tx from minswap
-        # Test data: executed_tx = efgh7777ffff8888gggg9999hhhh0000iiii1111
+        # Test data: executed_tx for LP removal = efgh7777ffff8888gggg9999hhhh0000iiii1111
         assert "efgh7777" in removal_intra.unique_id, f"Unique ID should be executed_tx, got {removal_intra.unique_id}"
 
         # Verify raw_data is from minswap
@@ -812,14 +817,17 @@ class TestYoroiCsv:
         assert len(deposit_return_intras) >= 4, f"Should have at least 4 deposit return intras, got {len(deposit_return_intras)}"
         assert len(ada_sent_intras) >= 4, f"Should have at least 4 ADA sent to contract intras, got {len(ada_sent_intras)}"
 
-        # Verify deposit return: 2.0 ADA from wallet to unknown
+        # Verify deposit return: 2.0 + change_amount from wallet to unknown
+        # Test data first swap: change_amount = 1.5, total = 2.0 + 1.5 = 3.5
         swap_intra = deposit_return_intras[0]
         assert swap_intra.asset == "ADA", f"Asset should be ADA, got {swap_intra.asset}"
         assert swap_intra.from_exchange == "yoroi_wallet", f"From should be yoroi_wallet, got {swap_intra.from_exchange}"
         assert swap_intra.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {swap_intra.to_exchange}"
-        assert swap_intra.crypto_sent == "2.0", f"Crypto sent should be 2.0, got {swap_intra.crypto_sent}"
+        assert swap_intra.crypto_sent == "3.5", f"Crypto sent should be 3.5, got {swap_intra.crypto_sent}"
+        assert swap_intra.crypto_received == "3.5", f"Crypto received should be 3.5, got {swap_intra.crypto_received}"
 
         # Verify unique_id is the executed_tx from minswap
+        # Test data: executed_tx for swap = aaaa1111bbbb2222cccc3333dddd4444eeee5555
         assert "aaaa1111" in swap_intra.unique_id, f"Unique ID should be executed_tx, got {swap_intra.unique_id}"
 
         # Verify ADA sent to contract: __unknown -> wallet
