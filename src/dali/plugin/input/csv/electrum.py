@@ -106,7 +106,7 @@ class InputPlugin(AbstractInputPlugin):
                         timestamp=f"{timestamp_value}",
                         asset=self.__CURRENCY,
                         from_exchange=self.__ELECTRUM if not is_deposit else Keyword.UNKNOWN.value,
-                        from_holder=self.account_holder,
+                        from_holder=self.account_holder if not is_deposit else Keyword.UNKNOWN.value,
                         to_exchange=self.__ELECTRUM if is_deposit else Keyword.UNKNOWN.value,
                         to_holder=self.account_holder,
                         spot_price=Keyword.UNKNOWN.value,

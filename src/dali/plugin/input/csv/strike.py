@@ -228,7 +228,7 @@ class InputPlugin(AbstractInputPlugin):
                             raw_data=raw_data,
                             timestamp=f"{timestamp_value}",
                             asset=self.__CURRENCY,
-                            exchange=self.__STRIKE,
+                            exchange=self.__account_nickname,
                             holder=self.account_holder,
                             transaction_type=Keyword.BUY.value,
                             spot_price=exchange_rate if exchange_rate else Keyword.UNKNOWN.value,

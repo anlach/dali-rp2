@@ -88,6 +88,7 @@ _SEND: str = "send"
 _RECEIVE: str = "receive"
 _STAKING_REWARD: str = "staking_reward"
 _STAKING_TRANSFER: str = "staking_transfer"
+_INCENTIVES_REWARDS_PAYOUT: str = "incentives_rewards_payout"
 _STATUS: str = "status"
 _SUBTITLE: str = "subtitle"
 _TITLE: str = "title"
@@ -472,10 +473,6 @@ class InputPlugin(AbstractInputPlugin):
 
         self.__logger.debug("Account: %s", json.dumps(account))
 
-        if account[_CREATED_AT] == account[_UPDATED_AT] and RP2Decimal(account[_BALANCE][_AMOUNT]) == ZERO:
-            # skip account without activity to avoid unnecessary API calls
-            return None
-
         transactions = []
         pickle_filename = f"transactions_{account_id}.pkl"
         if self.__pickle_api_cache_enabled and os.path.isfile(pickle_filename):
@@ -512,7 +509,7 @@ class InputPlugin(AbstractInputPlugin):
                     in_transaction_list=in_transaction_list,
                     out_transaction_list=out_transaction_list,
                 )
-            elif transaction_type in {_INTEREST}:
+            elif transaction_type in {_INTEREST, _INCENTIVES_REWARDS_PAYOUT}:
                 self._process_gain(transaction, currency, Keyword.INTEREST, in_transaction_list)
             elif transaction_type in {_STAKING_REWARD}:
                 self._process_gain(transaction, currency, Keyword.STAKING, in_transaction_list)

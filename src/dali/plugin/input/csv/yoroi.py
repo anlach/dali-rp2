@@ -235,8 +235,8 @@ def _create_swap_transactions(
     input_currency = "ADA"  # Swaps always involve selling ADA
 
     # OutTransaction: Sell the input asset (ADA) using on-chain amount
-    raw_data = f"Swap: {input_amount} {input_currency} -> {output_asset.amount} {output_asset.currency}"
-    notes = f"Minswap {_get_operation_notes(minswap_tx['order_type'], paid, receive, input_amount)}"
+    raw_data = f"Swap: {paid_amount} {input_currency} -> {output_asset.amount} {output_asset.currency}"
+    notes = f"Minswap {_get_operation_notes(minswap_tx['order_type'], paid, receive, paid_amount)}"
 
     result.append(
         OutTransaction(
@@ -256,8 +256,8 @@ def _create_swap_transactions(
     )
 
     # InTransaction: Buy the output asset (Token)
-    # Cost basis = ADA given (including fees)
-    cost_basis = input_amount + total_fee
+    # Cost basis = actual ADA given in swap (excluding deposit return and fees)
+    cost_basis = paid_amount
 
     # Include derivation info for when direct price lookup fails
     # Format: DERIVE:<input_currency>:<input_amount_with_fees>
@@ -571,7 +571,9 @@ def _create_zap_out_transactions(
     lp_asset_name = f"LP-{pool_name}"  # Specific LP token name like LP-ADA-MIN
 
     raw_data = f"Zap Out: {lp_token.amount} {lp_asset_name} -> {ada_received.amount} ADA"
-    notes = f"Minswap LP Removal from {pool_name} pool - Gain/Loss: {gain_loss:.2f} ADA"
+    notes_base = f"Minswap LP Removal from {pool_name} pool - Gain/Loss: {gain_loss:.2f} ADA"
+    derive_info = f"DERIVE:ADA:{ada_received.amount}"
+    notes_with_derive = f"{notes_base} | {derive_info}"
 
     # OutTransaction: Remove/sell LP tokens
     result.append(
@@ -587,7 +589,7 @@ def _create_zap_out_transactions(
             spot_price=Keyword.UNKNOWN.value,
             crypto_out_no_fee=str(lp_token.amount),
             crypto_fee="0",
-            notes=notes,
+            notes=notes_with_derive,
         )
     )
 
@@ -610,7 +612,7 @@ def _create_zap_out_transactions(
             spot_price=Keyword.UNKNOWN.value,
             crypto_in=str(ada_received.amount),
             crypto_fee=str(total_fee),
-            notes=notes,
+            notes=notes_with_derive,
         )
     )
 

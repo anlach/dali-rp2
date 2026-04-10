@@ -247,11 +247,6 @@ def _update_spot_price_from_web(transaction: AbstractTransaction, global_configu
     init_parameters: Dict[str, Any] = transaction.constructor_parameter_dictionary
     native_fiat = global_configuration[Keyword.NATIVE_FIAT.value]
 
-    # Skip price lookup for LP tokens (they have no market price)
-    if isinstance(transaction.asset, str) and transaction.asset.startswith("LP-"):  # type: ignore
-        LOGGER.debug("Skipping price lookup for LP token: %s", transaction.asset)
-        return transaction
-
     # If the crypto amount is very small (< $0.01), sometimes exchanges (like Coinbase) report the fiat_amount as zero. Since DaLI computes spot_price
     # as fiat amount/crypto amount, if fiat amount is 0, then spot price is 0 as well (see https://github.com/eprbell/dali-rp2/issues/19). This breaks
     # the contract with RP2, which requires spot_price to be > 0. If this situation is detected and the user passed the read_spot_price_from_web, then
@@ -415,6 +410,8 @@ def resolve_transactions(
                     LOGGER.debug("Unresolvable transaction (no %s): %s", Keyword.UNIQUE_ID.value, str(transaction))
                     resolved_transactions.append(transaction)
                 else:
+                    # Apply hint before grouping (to enable matching by new unique_id)
+                    transaction = _apply_transaction_hint(transaction, global_configuration)
                     transaction_list: List[AbstractTransaction]
                     transaction_list = unique_id_2_transactions.setdefault(AssetAndUniqueId(transaction.asset, transaction.unique_id), [])
                     transaction_list.append(transaction)
@@ -440,8 +437,8 @@ def resolve_transactions(
                 if len(transaction_list) == 0:
                     raise RP2RuntimeError(f"Internal error: Attempting to resolve zero transactions: {transaction_list}")
 
-                transaction1: AbstractTransaction = transaction_list[0]
-                transaction2: AbstractTransaction = transaction_list[1]
+                transaction1: AbstractTransaction = _apply_transaction_hint(transaction_list[0], global_configuration)
+                transaction2: AbstractTransaction = _apply_transaction_hint(transaction_list[1], global_configuration)
 
                 if transaction1.unique_id != transaction2.unique_id:
                     raise RP2RuntimeError(
@@ -490,14 +487,24 @@ def _apply_transaction_hint(
 
     if Keyword.TRANSACTION_HINTS.value not in global_configuration:
         return transaction
-    if transaction.unique_id not in global_configuration[Keyword.TRANSACTION_HINTS.value]:
+
+    hints: Dict[str, Any] = global_configuration[Keyword.TRANSACTION_HINTS.value]
+    lookup_key: str = transaction.unique_id.lower()
+    actual_key: Optional[str] = None
+    for key in hints:
+        if key.lower() == lookup_key:
+            actual_key = key
+            break
+
+    if actual_key is None:
         return transaction
 
+    hint = hints[actual_key]
     direction: str
     transaction_type: str
     notes: str
     new_unique_id: str
-    (direction, transaction_type, notes, new_unique_id) = global_configuration[Keyword.TRANSACTION_HINTS.value][transaction.unique_id]
+    (direction, transaction_type, notes, new_unique_id) = hint
     transaction_type = transaction_type.capitalize()
     notes = f"{notes}; {transaction.notes if transaction.notes else ''}"
     final_unique_id: str = new_unique_id if new_unique_id else transaction.unique_id
