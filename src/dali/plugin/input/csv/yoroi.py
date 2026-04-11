@@ -866,6 +866,8 @@ class InputPlugin(AbstractInputPlugin):
 
         self.__logger.info("Processing %d Minswap transactions", len(minswap_txs))
 
+        minswap_txs.sort(key=lambda tx: tx["created_at"])
+
         for minswap_tx in minswap_txs:
             if minswap_tx["order_type"] == _ORDER_TYPE_DEPOSIT:
                 _create_lp_deposit_transactions(minswap_tx, self.__account_nickname, self.account_holder, self.__MINSWAP_PLUGIN, result)
