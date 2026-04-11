@@ -324,8 +324,8 @@ def _create_swap_transactions(
 
     # Create second balancing Intra transaction for the ADA sent to the pool
     # This balances the Yoroi Withdrawal entry (the swap amount)
-    # Received amount = input_amount (from minswap Paid) + deposit return + execution fee
-    total_received = paid_amount + _CARDANO_DEPOSIT_RETURN + execution_fee
+    # Only include the swap amount + execution fee; deposit return is handled by the separate INTRA above
+    total_received = paid_amount + execution_fee
 
     result.append(
         IntraTransaction(
