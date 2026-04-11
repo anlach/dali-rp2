@@ -605,7 +605,7 @@ def _create_zap_out_transactions(
             transaction_type=Keyword.SELL.value,
             spot_price=Keyword.UNKNOWN.value,
             crypto_out_no_fee=str(lp_token_amount),
-            crypto_fee="0",
+            crypto_fee=str(total_fee),
             notes=notes_with_derive,
         )
     )
