@@ -230,11 +230,12 @@ def _create_swap_transactions(
     execution_fee = _extract_execution_fee(minswap_tx["execution_fees"])
     total_fee = execution_fee
 
-    # Minswap's Paid excludes the 2 ADA deposit return, but Yoroi shows the full amount
-    input_amount = paid_amount + _CARDANO_DEPOSIT_RETURN + total_fee
     input_currency = "ADA"  # Swaps always involve selling ADA
 
-    # OutTransaction: Sell the input asset (ADA) using on-chain amount
+    # OutTransaction: Sell the input asset (ADA)
+    # crypto_out_no_fee = paid_amount (just the swap amount, excluding deposit and fee)
+    # crypto_fee = total_fee (execution fee in ADA)
+    # crypto_out_with_fee = paid_amount + total_fee = total ADA leaving the account
     raw_data = f"Swap: {paid_amount} {input_currency} -> {output_asset.amount} {output_asset.currency}"
     notes = f"Minswap {_get_operation_notes(minswap_tx['order_type'], paid, receive, paid_amount)}"
 
@@ -249,8 +250,8 @@ def _create_swap_transactions(
             holder=account_holder,
             transaction_type=Keyword.SELL.value,
             spot_price=Keyword.UNKNOWN.value,
-            crypto_out_no_fee=str(input_amount),
-            crypto_fee=str(total_fee * input_amount / paid_amount),
+            crypto_out_no_fee=str(paid_amount),
+            crypto_fee=str(total_fee),
             notes=notes,
         )
     )
