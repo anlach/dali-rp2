@@ -278,7 +278,7 @@ def _create_swap_transactions(
             transaction_type=Keyword.BUY.value,
             spot_price=Keyword.UNKNOWN.value,
             crypto_in=str(output_asset.amount),
-            crypto_fee=str(execution_fee),
+            crypto_fee="0",
             notes=notes_with_derive,
         )
     )
@@ -612,7 +612,7 @@ def _create_zap_out_transactions(
             transaction_type=Keyword.BUY.value,
             spot_price=Keyword.UNKNOWN.value,
             crypto_in=str(ada_received.amount),
-            crypto_fee=str(total_fee),
+            crypto_fee="0",
             notes=notes_with_derive,
         )
     )
