@@ -250,7 +250,7 @@ def _create_swap_transactions(
             transaction_type=Keyword.SELL.value,
             spot_price=Keyword.UNKNOWN.value,
             crypto_out_no_fee=str(input_amount),
-            crypto_fee=str(total_fee),
+            crypto_fee=str(total_fee * input_amount / paid_amount),
             notes=notes,
         )
     )
