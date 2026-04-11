@@ -638,10 +638,9 @@ def _create_zap_out_transactions(
     total_returned = _CARDANO_DEPOSIT_RETURN + change_amount
 
     # Create one balancing Intra transaction for the LP removal
-    # This balances: deposit return + change + ADA received from the pool
-    # Total = 2 (deposit) + change_amount + ada_received
+    # Direction: pool (UNKNOWN) -> wallet, since ADA is coming from the pool to the wallet
     raw_data_minswap = minswap_tx.get("raw_data", "")
-    total_sent_to_contract = total_returned + ada_received.amount
+    total_received_from_pool = total_returned + ada_received.amount
 
     result.append(
         IntraTransaction(
@@ -650,13 +649,13 @@ def _create_zap_out_transactions(
             raw_data=raw_data_minswap,
             timestamp=timestamp,
             asset="ADA",
-            from_exchange=account_nickname,
-            from_holder=account_holder,
-            to_exchange=Keyword.UNKNOWN.value,
-            to_holder=Keyword.UNKNOWN.value,
+            from_exchange=Keyword.UNKNOWN.value,
+            from_holder=Keyword.UNKNOWN.value,
+            to_exchange=account_nickname,
+            to_holder=account_holder,
             spot_price=Keyword.UNKNOWN.value,
-            crypto_sent=str(total_sent_to_contract),
-            crypto_received=Keyword.UNKNOWN.value,
+            crypto_sent=Keyword.UNKNOWN.value,
+            crypto_received=str(total_received_from_pool),
             notes="Minswap LP Removal - deposit return + ADA received",
         )
     )
