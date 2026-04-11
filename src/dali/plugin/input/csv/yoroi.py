@@ -141,6 +141,19 @@ def _normalize_ada_amount(amount: float, currency: str) -> float:
     return amount
 
 
+def _normalize_amount(amount: float) -> float:
+    """Convert raw on-chain amounts to human-readable by dividing by 1,000,000 if > 1,000,000.
+
+    LP format rows in the Minswap CSV use raw on-chain amounts (Lovelace).
+    Simple format rows use human-readable amounts. This heuristic normalizes
+    any amount > 1,000,000, which correctly handles ADA, tokens with decimals,
+    and LP token amounts in raw form.
+    """
+    if amount > 1_000_000:
+        return amount / 1_000_000
+    return amount
+
+
 def _load_minswap_csv(filepath: str) -> List[Dict]:
     """Load and parse the Minswap CSV file."""
     results = []
@@ -354,8 +367,10 @@ def _create_lp_deposit_transactions(
         return
 
     lp_token = receive.assets[0]
+    lp_token_amount = _normalize_amount(lp_token.amount)
 
     # Extract ADA and token amounts
+    # LP format rows use raw on-chain amounts (Lovelace), so normalize all amounts
     ada_amount = 0.0
     token_amount = 0.0
     token_currency = None
@@ -366,7 +381,7 @@ def _create_lp_deposit_transactions(
             ada_amount = _normalize_ada_amount(asset.amount, asset.currency)
             ada_asset = asset
         else:
-            token_amount = asset.amount
+            token_amount = _normalize_amount(asset.amount)
             token_currency = asset.currency
 
     # Determine LP pair
@@ -375,7 +390,7 @@ def _create_lp_deposit_transactions(
 
     # Store cost basis for later LP removal
     # Key must include both pool AND LP amount to avoid collisions between different pools
-    lp_key = f"{lp_pair}_{int(lp_token.amount)}"
+    lp_key = f"{lp_pair}_{int(lp_token_amount)}"
     _LP_COST_BASES[lp_key] = {
         "ada_cost": ada_amount,
         "token_cost": token_amount,
@@ -390,7 +405,7 @@ def _create_lp_deposit_transactions(
 
     # OUT transaction for ADA
     if ada_amount > 0:
-        raw_data_ada = f"LP Deposit: {ada_amount} ADA to {lp_pair} pool -> {lp_token.amount} LP"
+        raw_data_ada = f"LP Deposit: {ada_amount} ADA to {lp_pair} pool -> {lp_token_amount} LP"
         notes_ada = f"Minswap LP Deposit to {lp_pair} pool - ADA portion"
         result.append(
             OutTransaction(
@@ -411,7 +426,7 @@ def _create_lp_deposit_transactions(
 
     # OUT transaction for the token (e.g., SNEK)
     if token_amount > 0 and token_currency:
-        raw_data_token = f"LP Deposit: {token_amount} {token_currency} to {lp_pair} pool -> {lp_token.amount} LP"
+        raw_data_token = f"LP Deposit: {token_amount} {token_currency} to {lp_pair} pool -> {lp_token_amount} LP"
         # Include derivation info so price can be derived from ADA
         derive_info = f"DERIVE:ADA:{ada_amount}"
         notes_token = f"Minswap LP Deposit to {lp_pair} pool - {token_currency} portion | {derive_info}"
@@ -434,7 +449,7 @@ def _create_lp_deposit_transactions(
 
     # IN transaction for LP tokens received
     # Cost basis = value of assets deposited (stored for later use)
-    raw_data_lp = f"LP Deposit: {ada_amount} ADA + {token_amount} {token_currency} -> {lp_token.amount} LP"
+    raw_data_lp = f"LP Deposit: {ada_amount} ADA + {token_amount} {token_currency} -> {lp_token_amount} LP"
     # Include derivation info: double the ADA contribution for spot price calculation
     derive_info = f"DERIVE:ADA:{ada_amount * 2}"
     notes_lp = f"Minswap LP Deposit to {lp_pair} pool - received LP tokens | Cost basis: {ada_amount} ADA + {token_amount} {token_currency} | {derive_info}"
@@ -449,7 +464,7 @@ def _create_lp_deposit_transactions(
             holder=account_holder,
             transaction_type=Keyword.BUY.value,
             spot_price=Keyword.UNKNOWN.value,
-            crypto_in=str(lp_token.amount),
+            crypto_in=str(lp_token_amount),
             crypto_fee="0",
             notes=notes_lp,
         )
@@ -533,6 +548,7 @@ def _create_zap_out_transactions(
         return
 
     lp_token = paid.assets[0]
+    lp_token_amount = _normalize_amount(lp_token.amount)
     ada_received = receive.assets[0]
 
     # Get execution fee
@@ -543,7 +559,7 @@ def _create_zap_out_transactions(
     # Look up cost basis for this LP amount
     # First, try to find by matching LP token amount (most reliable)
     cost_basis = {"ada_cost": 0.0, "token_cost": 0.0, "token_currency": "UNKNOWN", "pool": "unknown"}
-    lp_amount = int(lp_token.amount)
+    lp_amount = int(lp_token_amount)
 
     for key, cb in _LP_COST_BASES.items():
         # Key format is poolname_amount, extract amount
@@ -571,7 +587,7 @@ def _create_zap_out_transactions(
     pool_name = cost_basis.get("pool", "unknown")
     lp_asset_name = f"LP-{pool_name}"  # Specific LP token name like LP-ADA-MIN
 
-    raw_data = f"Zap Out: {lp_token.amount} {lp_asset_name} -> {ada_received.amount} ADA"
+    raw_data = f"Zap Out: {lp_token_amount} {lp_asset_name} -> {ada_received.amount} ADA"
     notes_base = f"Minswap LP Removal from {pool_name} pool - Gain/Loss: {gain_loss:.2f} ADA"
     derive_info = f"DERIVE:ADA:{ada_received.amount}"
     notes_with_derive = f"{notes_base} | {derive_info}"
@@ -588,7 +604,7 @@ def _create_zap_out_transactions(
             holder=account_holder,
             transaction_type=Keyword.SELL.value,
             spot_price=Keyword.UNKNOWN.value,
-            crypto_out_no_fee=str(lp_token.amount),
+            crypto_out_no_fee=str(lp_token_amount),
             crypto_fee="0",
             notes=notes_with_derive,
         )
