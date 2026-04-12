@@ -762,15 +762,15 @@ class TestYoroiCsv:
 
         assert len(removal_intras) >= 1, f"Should have at least one LP removal intra, got {len(removal_intras)}"
 
-        # Verify: deposit + change + ADA received from wallet to unknown
+        # Verify: deposit + change + ADA received from pool (unknown) to wallet
         # Test data LP removal: deposit = 2.0, change = 1.25, ada_received = 50.5
         # Total = 2.0 + 1.25 + 50.5 = 53.75
         removal_intra = removal_intras[0]
         assert removal_intra.asset == "ADA", f"Asset should be ADA, got {removal_intra.asset}"
-        assert removal_intra.from_exchange == "yoroi_wallet", f"From should be yoroi_wallet, got {removal_intra.from_exchange}"
-        assert removal_intra.to_exchange == Keyword.UNKNOWN.value, f"To should be __unknown, got {removal_intra.to_exchange}"
-        assert removal_intra.crypto_sent == "53.75", f"Crypto sent should be 53.75, got {removal_intra.crypto_sent}"
-        assert removal_intra.crypto_received == Keyword.UNKNOWN.value, f"Crypto received should be __unknown, got {removal_intra.crypto_received}"
+        assert removal_intra.from_exchange == Keyword.UNKNOWN.value, f"From should be __unknown, got {removal_intra.from_exchange}"
+        assert removal_intra.to_exchange == "yoroi_wallet", f"To should be yoroi_wallet, got {removal_intra.to_exchange}"
+        assert removal_intra.crypto_sent == Keyword.UNKNOWN.value, f"Crypto sent should be __unknown, got {removal_intra.crypto_sent}"
+        assert removal_intra.crypto_received == "53.75", f"Crypto received should be 53.75, got {removal_intra.crypto_received}"
 
         # Verify unique_id is the executed_tx from minswap
         # Test data: executed_tx for LP removal = efgh7777ffff8888gggg9999hhhh0000iiii1111
@@ -837,8 +837,8 @@ class TestYoroiCsv:
         assert ada_sent.from_exchange == Keyword.UNKNOWN.value, f"From should be __unknown, got {ada_sent.from_exchange}"
         assert ada_sent.to_exchange == "yoroi_wallet", f"To should be yoroi_wallet, got {ada_sent.to_exchange}"
 
-        # Verify amount: input (10) + deposit (2) + fee (0.7) = 12.7
-        assert float(ada_sent.crypto_received) == 12.7, f"Crypto received should be 12.7, got {ada_sent.crypto_received}"
+        # Verify amount: input (10) + fee (0.7) = 10.7 (deposit return handled by separate INTRA)
+        assert float(ada_sent.crypto_received) == 10.7, f"Crypto received should be 10.7, got {ada_sent.crypto_received}"
 
         # Verify unique_id is the created_tx from minswap
         assert "aaaa0000" in ada_sent.unique_id, f"Unique ID should be created_tx, got {ada_sent.unique_id}"
