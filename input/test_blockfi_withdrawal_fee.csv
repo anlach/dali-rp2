@@ -1,0 +1,3 @@
+currency,amount,type,timestamp
+BTC,0.001,Withdrawal Fee,2022-11-01 10:00:00
+BTC,0.5,Withdrawal,2022-11-01 10:00:00

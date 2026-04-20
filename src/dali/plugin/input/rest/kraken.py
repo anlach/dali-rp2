@@ -133,13 +133,22 @@ class InputPlugin(AbstractCcxtInputPlugin):
         return self.__PLUGIN_NAME
 
     def _initialize_client(self) -> kraken:
-        return kraken(
-            {
-                "apiKey": self.__api_key,
-                "enableRateLimit": True,
-                "secret": self.__api_secret,
+        # Check for API URL override from environment variable (for E2E testing with mock servers)
+        api_url_override = self._get_api_url_override(self.__EXCHANGE_NAME)
+        
+        client_options: Dict[str, Any] = {
+            "apiKey": self.__api_key,
+            "enableRateLimit": True,
+            "secret": self.__api_secret,
+        }
+        
+        # Apply URL override if environment variable is set (for E2E testing)
+        if api_url_override:
+            client_options["urls"] = {
+                "api": api_url_override,
             }
-        )
+        
+        return kraken(client_options)
 
     def _initialize_markets(self) -> None:
         self._client.load_markets()

@@ -1,0 +1,24 @@
+{
+  "id": "withdrawal-123",
+  "txid": "0xbbb4654a3234aa6118af9b4b335f5ae81c360b2394721c019b5d1e75328b09f4",
+  "timestamp": 1599621998000,
+  "datetime": "2020-09-09T03:26:38.000Z",
+  "network": "ETH",
+  "address": "0x888cabe9236ce061e5a892e1a59395a81fc8d62c",
+  "addressTo": "0x888cabe9236ce061e5a892e1a59395a81fc8d62c",
+  "addressFrom": null,
+  "tag": null,
+  "tagTo": null,
+  "tagFrom": null,
+  "type": "withdrawal",
+  "amount": 0.005,
+  "currency": "PAXG",
+  "status": "ok",
+  "updated": null,
+  "internal": false,
+  "fee": null,
+  "info": {
+    "amount": "0.005",
+    "coin": "PAXG"
+  }
+}

@@ -1,0 +1,3 @@
+timestamp;type;transaction_id;address;fee;total
+06/15/2022, 10:30:00 AM;RECV;tx123abc;address1;0.0001;0.05
+07/01/2022, 2:20:00 PM;SENT;tx456def;address2;0.0002;0.1

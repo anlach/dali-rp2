@@ -1,0 +1,19 @@
+{
+  "id": "trade-no-fee-currency-123",
+  "timestamp": 1599622002000,
+  "datetime": "2020-09-09T03:26:42.000Z",
+  "symbol": "ETH/USD",
+  "order": "order-128",
+  "type": "limit",
+  "side": "sell",
+  "takerOrMaker": "taker",
+  "price": 2000.0,
+  "amount": 1.0,
+  "cost": 2000.0,
+  "fee": {
+    "cost": 0.01,
+    "currency": null,
+    "rate": 0.001
+  },
+  "info": {}
+}

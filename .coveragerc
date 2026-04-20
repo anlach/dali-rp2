@@ -1,0 +1,18 @@
+[run]
+source = src/dali
+branch = True
+omit =
+    */plugin/country/*
+    */plugin/input/ods/*
+    */plugin/pair_converter/ccxt*
+    */plugin/pair_converter/ccxt_*
+    */plugin/pair_converter/csv/*
+    */plugin/pair_converter/coinbase*
+
+[report]
+precision = 2
+show_missing = True
+skip_empty = True
+
+[html]
+directory = htmlcov

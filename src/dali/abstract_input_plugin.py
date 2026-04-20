@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from typing import List, Optional, cast
 
 from rp2.abstract_country import AbstractCountry
@@ -70,3 +71,19 @@ class AbstractInputPlugin:
         if currency is None:
             return False
         return currency == self.__native_fiat
+
+    # Environment variable prefixes for API URL overrides (for E2E testing with mock servers)
+    _DALI_ENV_PREFIX: str = "DALI_"
+    _API_URL_SUFFIX: str = "_API_URL"
+
+    def _get_api_url_override(self, exchange_name: str) -> Optional[str]:
+        """
+        Get API URL override from environment variable for E2E testing.
+        
+        Looks for environment variable: DALI_<EXCHANGE>_API_URL
+        e.g., DALI_BINANCE_API_URL, DALI_COINBASE_API_URL, DALI_KRAKEN_API_URL
+        
+        This allows tests to redirect API calls to a local mock HTTP server.
+        """
+        env_var_name = f"{self._DALI_ENV_PREFIX}{exchange_name.upper()}{self._API_URL_SUFFIX}"
+        return os.environ.get(env_var_name)

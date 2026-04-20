@@ -1,0 +1,3 @@
+Type,Trade ID,Date,Sold Currency,Sold Quantity,Buy Currency,Buy Quantity
+Trade,12345,2022-12-01 15:00:00,BTC,0.1,ETH,2.0
+Trade,12346,2022-12-02 16:00:00,ETH,1.0,USDC,1500

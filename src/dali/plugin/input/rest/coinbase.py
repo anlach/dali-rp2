@@ -18,6 +18,7 @@
 # Endpoint: https://api.coinbase.com
 
 import hashlib
+import os
 import hmac
 import json
 import logging
@@ -160,7 +161,13 @@ class InputPlugin(AbstractInputPlugin):
         thread_count: Optional[int] = None,
     ) -> None:
         super().__init__(account_holder=account_holder, native_fiat=native_fiat)
-        self.__api_url: str = InputPlugin.__API_URL
+        
+        # Check for API URL override from environment variable (for E2E testing with mock servers)
+        api_url_override = self._get_api_url_override(self.__COINBASE)
+        
+        # Use default URL unless overridden via environment variable
+        self.__api_url: str = api_url_override if api_url_override else InputPlugin.__API_URL
+        
         self.__auth: _CoinbaseAuth = _CoinbaseAuth(api_key, api_secret)
         self.__session: Session = requests.Session()
         self.__logger: logging.Logger = create_logger(f"{self.__COINBASE}/{self.account_holder}")
